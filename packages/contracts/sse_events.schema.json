@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SSEEventEnvelope",
+  "description": "Standard Server-Sent Events envelope streamed from services/workos to apps/web.",
+  "type": "object",
+  "required": [
+    "event_type",
+    "thread_id",
+    "payload"
+  ],
+  "properties": {
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "processing_started",
+        "resolution_ready",
+        "hitl_ready",
+        "dispatched",
+        "tracker_update",
+        "complete",
+        "error"
+      ],
+      "description": "Event classification per ARCHITECTURE §6.2."
+    },
+    "thread_id": {
+      "type": "string",
+      "description": "LangGraph thread ID correlating to this execution run."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Dynamic payload corresponding to the event_type.",
+      "additionalProperties": true
+    }
+  }
+}
