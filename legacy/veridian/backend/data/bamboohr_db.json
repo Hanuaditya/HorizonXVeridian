@@ -1,0 +1,106 @@
+{
+  "companyName": "Veridian Global",
+  "generatedAt": "2023-10-27T08:00:00Z",
+  "employees": [
+    {
+      "id": "EMP-01042",
+      "displayName": "Arjun Rao",
+      "firstName": "Jason",
+      "lastName": "Yavorska",
+      "workEmail": "jyavorska@veridian.local",
+      "department": "Product Management",
+      "jobTitle": "Group Product Manager, CI/CD",
+      "employmentStatus": "On Paternity Leave",
+      "location": "Remote - US",
+      "hireDate": "2019-03-12"
+    },
+    {
+      "id": "EMP-04992",
+      "displayName": "Dov Hershkovitz",
+      "firstName": "Dov",
+      "lastName": "Hershkovitz",
+      "workEmail": "dhershkovitz@veridian.local",
+      "department": "Infrastructure",
+      "jobTitle": "API Monitoring Engineer",
+      "employmentStatus": "New Hire",
+      "location": "Tel Aviv, IL",
+      "hireDate": "2023-10-15"
+    },
+    {
+      "id": "EMP-01822",
+      "displayName": "Christopher",
+      "firstName": "Christopher",
+      "lastName": "Lefevre",
+      "workEmail": "clefevre@veridian.local",
+      "department": "Infrastructure",
+      "jobTitle": "Director of Engineering, Infrastructure",
+      "employmentStatus": "Active",
+      "location": "San Francisco, CA",
+      "hireDate": "2018-11-01"
+    },
+    {
+      "id": "EMP-02114",
+      "displayName": "James",
+      "firstName": "James",
+      "lastName": "Ramsay",
+      "workEmail": "jramsay@veridian.local",
+      "department": "Engineering",
+      "jobTitle": "Engineering Manager, Source Code",
+      "employmentStatus": "Active",
+      "location": "London, UK",
+      "hireDate": "2020-05-20"
+    },
+    {
+      "id": "EMP-04988",
+      "displayName": "Gabe Weaver",
+      "firstName": "Gabe",
+      "lastName": "Weaver",
+      "workEmail": "gweaver@veridian.local",
+      "department": "Product Management",
+      "jobTitle": "Product Manager, Manage",
+      "employmentStatus": "New Hire",
+      "location": "Remote - US",
+      "hireDate": "2023-10-01"
+    },
+    {
+      "id": "EMP-00941",
+      "displayName": "Scott",
+      "firstName": "Scott",
+      "lastName": "Williamson",
+      "workEmail": "swilliamson@veridian.local",
+      "department": "Executive",
+      "jobTitle": "VP of Product",
+      "employmentStatus": "Active",
+      "location": "Austin, TX",
+      "hireDate": "2017-08-14"
+    },
+    {
+      "id": "EMP-01222",
+      "displayName": "Josh Lambert",
+      "firstName": "Josh",
+      "lastName": "Lambert",
+      "workEmail": "jlambert@veridian.local",
+      "department": "Product Management",
+      "jobTitle": "Director of Product",
+      "employmentStatus": "Active",
+      "location": "Remote - US",
+      "hireDate": "2019-07-22"
+    },
+    {
+      "id": "EMP-03110",
+      "displayName": "Sarah O'Donnell",
+      "firstName": "Sarah",
+      "lastName": "O'Donnell",
+      "workEmail": "sodonnell@veridian.local",
+      "department": "User Experience",
+      "jobTitle": "UX Researcher",
+      "employmentStatus": "Active",
+      "location": "Remote - EMEA",
+      "hireDate": "2021-02-08"
+    }
+  ],
+  "pagination": {
+    "nextPage": null,
+    "totalCount": 8
+  }
+}
