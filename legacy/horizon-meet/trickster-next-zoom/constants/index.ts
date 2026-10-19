@@ -21,13 +21,8 @@ export const sidebarLinks = [
   },
   {
     imgURL: '/icons/insights.svg',
-    route: '/insights',
+    route: '/insights', // Matches the label
     label: 'Insights',
-  },
-  {
-    imgURL: '/icons/about.svg',  // ← NEW: Add this line
-    route: '/about',              // ← NEW: Add this line
-    label: 'About',               // ← NEW: Add this line
   },
   {
     imgURL: '/icons/add-personal.svg',
