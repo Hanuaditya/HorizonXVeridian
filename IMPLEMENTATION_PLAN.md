@@ -64,11 +64,11 @@ Tasks
 Prompt for IDE
 ```
 Phase 1 of IMPLEMENTATION_PLAN.md. Create the monorepo skeleton exactly as in ARCHITECTURE.md §2.
-- Copy (not move) source code later; for now create empty service shells with a /health endpoint each
-  (services/workos FastAPI, services/media Flask) and a Next.js 14 app in apps/web with Clerk wired but no pages yet.
+- Copy legacy/horizon-meet/zoom into apps/web as-is (without node_modules/.env) and verify install + type-check + build work.
+- Create empty service shells with a /health endpoint each (services/workos FastAPI, services/media Flask).
 - Implement packages/contracts: JSON schemas from ARCHITECTURE.md §6 plus a `make contracts` command that
   generates TS types into apps/web and Pydantic models into both services. Add a CI check that fails if generated files are stale.
-- Add .env.example with names from §11 and no values, a root README with the run commands, pre-commit config, and a CI workflow (lint + type-check + tests).
+- Add .env.example with names from §11 and default thresholds (0.50), a root README with the run commands, pre-commit config, and a CI workflow (lint + type-check + tests).
 Show me the file tree and the commands to run everything. Do not port any business logic yet.
 ```
 
@@ -140,6 +140,9 @@ Exit: upload fixture video → transcript with speaker labels in DB → signed `
 
 Tasks
 - Port Veridian `backend/` into `services/workos`.
+- Add `langchain-google-genai` to `requirements.txt`.
+- Replace hardcoded models with env config (`LLM_EXTRACTION_MODEL`, `LLM_REASONING_MODEL`, `EMBEDDING_MODEL`); do not assume `gemini-2.0-flash-exp` or other old names are still available.
+- Keep `SECURITY_THRESHOLD=0.50` and `FINANCE_THRESHOLD=0.50` as defaults in config.
 - `POST /api/meeting-ended`: verify HMAC + timestamp, validate schema, idempotency, return 202 + `thread_id`, run graph in background.
 - Extractor receives speaker-attributed segments; add `resolve_assignees` step (speaker → `employees`); unresolved → `UNRESOLVED_ASSIGNEE` flag.
 - Replace `MemorySaver` with `PostgresSaver`; verify pause → restart server → resume works.
@@ -205,10 +208,10 @@ Exit: record/upload a meeting → it appears in dashboard → approve → ticket
 **Goal:** tracking works reliably and cannot loop or auto-close wrongly.
 
 Tasks
-- Slack webhook: signature verification, ack < 3s, async processing, Slack event de-duplication by `event_id`.
+- Slack webhook: signature verification, ack < 3s, async processing, Slack event de-duplication by `event_id`. MUST REJECT requests if `SLACK_SIGNING_SECRET` is missing (never return True).
 - `intent_parser_node` classifies `COMPLETE | PARTIAL | BLOCKED | AMBIGUOUS` with confidence; `slack_threads.turn_count` persisted; `turn_count >= 2` → escalate.
 - `BLOCKED` → flag Jira (label/comment) + `escalation_node` DM to manager.
-- GitHub webhook: HMAC verify; `semantic_matcher_node` embeds commit message, compares with active ticket vectors **scoped to the committer's tickets and repo mapping**; auto-Done only if top match ≥ threshold **and** margin over 2nd match ≥ configured gap; else DM assignee to confirm.
+- GitHub webhook: HMAC verify (MUST REJECT requests if `GITHUB_WEBHOOK_SECRET` is missing, never return True); `semantic_matcher_node` embeds commit message, compares with active ticket vectors **scoped to the committer's tickets and repo mapping**; auto-Done only if top match ≥ threshold **and** margin over 2nd match ≥ configured gap; else DM assignee to confirm.
 - Emit `tracker_update` SSE events; show live in the Tracker panel.
 - Audit every transition, including who/what triggered it.
 

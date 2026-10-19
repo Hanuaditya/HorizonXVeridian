@@ -16,7 +16,7 @@ One sentence: **a meeting ends, and compliant, approved work is created and trac
 | | Horizon Meet | Veridian WorkOS |
 |---|---|---|
 | Role | Capture + media intelligence | Decide + execute + track |
-| Frontend | Next.js 14, Clerk, Stream.io | Next.js 14, Framer Motion, SSE |
+| Frontend | Next.js 15, Clerk, Stream.io | Next.js 14, Framer Motion, SSE |
 | Backend | Flask (`dubbing-service`) | FastAPI + LangGraph |
 | AI | Gemini, Google STT/TTS | Gemini, Llama 3.1 70B (NIM), NV-EmbedQA-E5-v5 |
 | Data | Supabase, Cloudinary | Supabase + pgvector |
@@ -25,7 +25,7 @@ One sentence: **a meeting ends, and compliant, approved work is created and trac
 
 | Concern | Decision |
 |---|---|
-| Two Next.js apps | **Merge into one** `apps/web` |
+| Two Next.js apps | **Merge into one** `apps/web` (Next.js 15, matching Horizon Meet; port Veridian components to Next 15) |
 | Two backends | **Keep two services** (different runtime profiles), joined by a signed contract |
 | Two Supabase usages | **One Supabase project**, one schema, tenant-scoped |
 | Auth | **Clerk** is the only identity provider; backends verify Clerk JWTs |
@@ -44,7 +44,7 @@ horizon-veridian/
 ├── docker-compose.yml
 ├── .env.example                   # root template, no real secrets ever
 ├── apps/
-│   └── web/                       # ONE Next.js 14 app
+│   └── web/                       # ONE Next.js 15 app (matching Horizon Meet)
 │       ├── app/
 │       │   ├── (auth)/            # Clerk sign-in / sign-up
 │       │   ├── (meet)/            # Horizon Meet: lobby, room, recordings, dubbing
@@ -126,8 +126,8 @@ Rules:
 |---|---|---|---|
 | `hr_checker` | Assignee on leave/PTO | `hr_employees` | status in leave set |
 | `capacity_checker` | Live workload | Jira API | open tickets / story points over `CAPACITY_LIMIT` |
-| `security_checker` | Policy semantic match | `security_policies` pgvector | cosine similarity ≥ `SECURITY_THRESHOLD` (default 0.75) |
-| `finance_checker` | Unapproved spend | `finance_budgets` pgvector | similarity ≥ `FINANCE_THRESHOLD` (default 0.70) |
+| `security_checker` | Policy semantic match | `security_policies` pgvector | cosine similarity ≥ `SECURITY_THRESHOLD` (default 0.50) |
+| `finance_checker` | Unapproved spend | `finance_budgets` pgvector | similarity ≥ `FINANCE_THRESHOLD` (default 0.50) |
 
 Thresholds are env/config values, not literals. Embeddings are 1024-dim; the DB column dimension and `EMBEDDING_MODEL` must match (enforced by a startup check).
 
@@ -277,7 +277,7 @@ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_ANON_KEY, DATABASE
 GEMINI_API_KEY, NVIDIA_API_KEY
 LLM_EXTRACTION_MODEL, LLM_REASONING_MODEL, EMBEDDING_MODEL, EMBEDDING_DIM=1024
 # thresholds
-SECURITY_THRESHOLD=0.75, FINANCE_THRESHOLD=0.70, COMMIT_MATCH_THRESHOLD, CAPACITY_LIMIT
+SECURITY_THRESHOLD=0.50, FINANCE_THRESHOLD=0.50, COMMIT_MATCH_THRESHOLD, CAPACITY_LIMIT
 # integrations
 JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY
 SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET
@@ -295,7 +295,7 @@ LANGCHAIN_TRACING_V2, LANGCHAIN_API_KEY, LANGCHAIN_PROJECT
 | # | Decision | Reason |
 |---|---|---|
 | ADR-1 | Monorepo, two services | Different runtimes (GPU/media vs agent API); one contract package |
-| ADR-2 | One Next.js app using route groups | Shared auth, shared layout, one deploy |
+| ADR-2 | One Next.js 15 app using route groups | Shared auth, shared layout, one deploy (matches Horizon working Next 15 stack) |
 | ADR-3 | Clerk as sole IdP | Already used by Horizon; avoids second auth system |
 | ADR-4 | Contracts generated from JSON schema | Prevents TS/Python drift |
 | ADR-5 | PostgresSaver for HITL | Pending approvals survive restarts |
