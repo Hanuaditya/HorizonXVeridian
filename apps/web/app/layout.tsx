@@ -19,13 +19,19 @@ export const metadata: Metadata = {
   },
 };
 
+const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+if (!clerkPublishableKey && process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-production-build') {
+  throw new Error('FATAL [Horizon Veridian]: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required in production runtime.');
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en">
       <ClerkProvider
-        publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk'}
+        publishableKey={clerkPublishableKey || 'pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk'}
+
         appearance={{
 
           layout: {
