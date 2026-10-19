@@ -1,0 +1,18 @@
+{
+  "name": "horizon-veridian",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "lint": "npm --prefix apps/web run lint",
+    "type-check": "npm --prefix apps/web run type-check",
+    "contracts:generate": "python packages/contracts/scripts/generate_contracts.py",
+    "contracts:check": "python packages/contracts/scripts/generate_contracts.py --check",
+    "test:contracts": "npm run contracts:check"
+  }
+}
