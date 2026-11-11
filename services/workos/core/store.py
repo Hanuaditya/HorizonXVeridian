@@ -518,6 +518,13 @@ def upsert_tasks(org_id: str, meeting_id: str, thread_id: str, tasks: Dict[str, 
     rows: List[Dict[str, Any]] = []
     for task_id, task in tasks.items():
         title_for_vec = task.get("reframed_title") or task.get("title") or ""
+        try:
+            task_emb: Optional[List[float]] = get_embedding(
+                f"{title_for_vec} {task.get('transcript_quote', '')}"
+            )
+        except Exception as exc:
+            logger.debug("upsert_tasks: optional task embedding skipped (%s)", exc)
+            task_emb = None
         rows.append({
             "task_id": task_id,
             "org_id": org_id,
@@ -543,7 +550,7 @@ def upsert_tasks(org_id: str, meeting_id: str, thread_id: str, tasks: Dict[str, 
             "jira_key": task.get("jira_ticket_id") or task.get("jira_key"),
             "jira_url": task.get("jira_url"),
             "slack_dm_sent": bool(task.get("slack_dm_sent", False)),
-            "embedding": get_embedding(f"{title_for_vec} {task.get('transcript_quote', '')}"),
+            "embedding": task_emb,
             "updated_at": now_iso,
         })
 

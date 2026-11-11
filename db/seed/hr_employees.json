@@ -25,7 +25,7 @@
       "department": "Platform Engineering",
       "jobTitle": "Principal Infrastructure Engineer",
       "employmentStatus": "Active",
-      "openTickets": 2,
+      "openTickets": 1,
       "slackId": "U_JOSH_DEMO",
       "jiraAccountId": "jira-josh-02"
     },
@@ -64,7 +64,7 @@
       "department": "FinOps & Cloud Operations",
       "jobTitle": "Finance Partner, Engineering",
       "employmentStatus": "Active",
-      "openTickets": 1,
+      "openTickets": 4,
       "slackId": "U_AMIT_DEMO",
       "jiraAccountId": "jira-amit-05"
     },

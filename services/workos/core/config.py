@@ -80,11 +80,7 @@ def get_settings() -> WorkOSSettings:
         or ""
     ).strip()
 
-    evon_key = (
-        os.getenv("EVON_API_KEY")
-        or os.getenv("HF_TOKEN")
-        or ""
-    ).strip()
+    evon_key = os.getenv("EVON_API_KEY", "").strip()
 
     roles_raw = os.getenv("CLERK_MANAGER_ROLES", "org:admin,admin,manager")
     manager_roles = tuple(r.strip() for r in roles_raw.split(",") if r.strip())
