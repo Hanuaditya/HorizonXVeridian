@@ -7,3 +7,7 @@ venv/
 .next/
 __pycache__/
 *.zip
+temp/
+.dead_letters/
+*.db
+.pytest_cache/
