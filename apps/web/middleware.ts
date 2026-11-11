@@ -1,28 +1,41 @@
-// middleware.ts
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 
 const isProtectedRoute = createRouteMatcher([
-  "/",
-  "/upcoming(.*)",
-  "/previous(.*)",
-  "/recording(.*)",
-  "/personal-room(.*)",
-  "/meeting(.*)",
+  '/',
+  '/upcoming(.*)',
+  '/previous(.*)',
+  '/recording(.*)',
+  '/personal-room(.*)',
+  '/meeting(.*)',
+  '/meetings(.*)',
+  '/workos(.*)',
+  '/admin(.*)',
 ]);
 
-export default clerkMiddleware(async (auth, req) => {
-  if (isProtectedRoute(req)) {
-    // Redirect unauthenticated users automatically
-    await auth.protect();
-  }
-});
+const hasRealClerk = Boolean(
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
+    !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.startsWith('pk_test_ZXhh')
+);
 
-// IMPORTANT: use Clerk’s recommended matcher
+const isDevDemoBypass =
+  !hasRealClerk &&
+  process.env.NODE_ENV !== 'production' &&
+  (process.env.DEMO_MODE === 'true' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true');
+
+export default isDevDemoBypass
+  ? function demoMiddleware() {
+      return NextResponse.next();
+    }
+  : clerkMiddleware(async (auth, req) => {
+      if (isProtectedRoute(req)) {
+        await auth.protect();
+      }
+    });
+
 export const config = {
   matcher: [
-    // Skip Next.js internals and static files
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    // Always run for API routes
-    "/(api|trpc)(.*)",
+    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+    '/(api|trpc)(.*)',
   ],
 };

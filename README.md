@@ -91,6 +91,15 @@ docker compose up --build
 
 Contracts between services are strictly typed using JSON Schemas under `packages/contracts/`.
 
+- **Seed HR, Finance CSV & Security Policies (`db/seed/`):**
+  ```bash
+  npm run seed
+  ```
+- **Run Service Tests (Media & WorkOS):**
+  ```bash
+  pytest services/media/tests -v
+  pytest services/workos/tests -v
+  ```
 - **Check contracts freshness (CI check):**
   ```bash
   npm run contracts:check
@@ -99,14 +108,21 @@ Contracts between services are strictly typed using JSON Schemas under `packages
   ```bash
   npm run contracts:generate
   ```
-- **Type-check frontend:**
+- **Type-check & lint frontend:**
   ```bash
   npm run type-check
+  npm run lint
   ```
 - **Build frontend:**
   ```bash
   npm run build
   ```
+
+### Unified Web Routes
+- `/workos`: Live Gnani Evon 30B × Veridian WorkOS Compliance Hub & HITL Approval Center
+- `/meetings` & `/meetings/[id]`: Unified Meeting Hub & Detail Dossier (Gnani Prisma STT + Timbre Dubbing + Tasks)
+- `/admin`: Clerk ↔ Slack ↔ Jira Identity Mappings, Config Thresholds & Connector Sync
+- `/`, `/upcoming`, `/previous`, `/recordings`, `/insights`, `/personal-room`: Horizon Meet Rooms & Recordings
 
 ---
 

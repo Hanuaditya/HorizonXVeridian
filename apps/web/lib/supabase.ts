@@ -33,3 +33,21 @@ export const supabase = new Proxy(_underlyingClient, {
   },
 });
 
+/**
+ * Create a request-scoped Supabase client carrying Clerk's session JWT so
+ * PostgreSQL Row Level Security (`current_org_id()`) enforces tenant isolation.
+ */
+export function createClerkSupabaseClient(clerkSessionToken: string | null) {
+  if (!isConfigured) {
+    throw new Error(
+      'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY for RLS-scoped Supabase query.'
+    );
+  }
+  return createClient(supabaseUrl!, supabaseAnonKey!, {
+    auth: { persistSession: false },
+    global: {
+      headers: clerkSessionToken ? { Authorization: `Bearer ${clerkSessionToken}` } : {},
+    },
+  });
+}
+

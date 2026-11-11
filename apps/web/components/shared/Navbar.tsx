@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import React from 'react';
 import MobileNav from './MobileNav';
-import { SignedIn, UserButton } from '@clerk/nextjs';
+import { OrganizationSwitcher, SignedIn, UserButton } from '@clerk/nextjs';
 
 const Navbar = () => {
   return (
@@ -14,19 +14,24 @@ const Navbar = () => {
           src={'/icons/logo.svg'}
           width={32}
           height={32}
-          alt='HorizonMeet logo'
+          alt='Horizon Veridian logo'
           className='max-sm:size-10'
         />
         <p className='text-[26px] font-extrabold text-white max-sm:hidden'>
-          HorizonMeet 
+          Horizon Veridian
         </p>
       </Link>
 
       <div className='flex-between gap-5'>
         <SignedIn>
+          <OrganizationSwitcher
+            appearance={{
+              variables: { colorText: '#ffffff', colorBackground: '#252A41' },
+            }}
+          />
           <UserButton />
         </SignedIn>
-        
+
         <MobileNav />
       </div>
     </nav>

@@ -25,6 +25,21 @@ export const sidebarLinks = [
     label: 'Insights',
   },
   {
+    imgURL: '/icons/recordings.svg',
+    route: '/meetings',
+    label: 'Meetings Hub',
+  },
+  {
+    imgURL: '/icons/checked.svg',
+    route: '/workos',
+    label: 'WorkOS Hub',
+  },
+  {
+    imgURL: '/icons/schedule.svg',
+    route: '/admin',
+    label: 'Admin & Maps',
+  },
+  {
     imgURL: '/icons/add-personal.svg',
     route: '/personal-room',
     label: 'Personal Room',
