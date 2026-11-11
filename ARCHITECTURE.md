@@ -29,8 +29,9 @@ One sentence: **a meeting ends, and compliant, approved work is created and trac
 | Two backends | **Keep two services** (different runtime profiles), joined by a signed contract |
 | Two Supabase usages | **One Supabase project**, one schema, tenant-scoped |
 | Auth | **Clerk** is the only identity provider; backends verify Clerk JWTs |
-| Transcription | Pluggable provider. Target: WhisperX + diarization (needed to know *who* owns a task). Google STT is a fallback |
-| LLM model names | **Never hard-code.** All models come from env vars (`LLM_EXTRACTION_MODEL`, `LLM_REASONING_MODEL`, `EMBEDDING_MODEL`) because model versions get deprecated |
+| Transcription | Pluggable provider (`TRANSCRIBER`). Default sprint: **Gnani Prisma V3.0** (Hinglish/Indic diarization); WhisperX & Google STT supported as alternatives |
+| TTS / Dubbing | Pluggable provider (`TTS_PROVIDER`). Default sprint: **Gnani Timbre**; Google Cloud TTS supported as fallback |
+| LLM model names | **Never hard-code.** All models come from env vars (`EVON_MODEL_NAME`, `LLM_EXTRACTION_MODEL`, `LLM_REASONING_MODEL`, `EMBEDDING_MODEL`) because model versions get deprecated |
 
 ---
 
@@ -266,7 +267,10 @@ Definition of done for any task: tests pass, contract unchanged or versioned, `A
 
 ```
 # shared
-APP_ENV, SHARED_HMAC_SECRET
+APP_ENV, DEMO_MODE, SHARED_HMAC_SECRET
+# gnani ai
+GNANI_API_KEY, GNANI_TOKEN, GNANI_STT_ENDPOINT, GNANI_TTS_ENDPOINT, GNANI_PRISMA_MODEL, GNANI_TIMBRE_VOICE
+EVON_MODEL_NAME, EVON_API_BASE, EVON_API_KEY
 # clerk
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, CLERK_JWKS_URL
 # stream
@@ -277,13 +281,13 @@ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_ANON_KEY, DATABASE
 GEMINI_API_KEY, NVIDIA_API_KEY
 LLM_EXTRACTION_MODEL, LLM_REASONING_MODEL, EMBEDDING_MODEL, EMBEDDING_DIM=1024
 # thresholds
-SECURITY_THRESHOLD=0.50, FINANCE_THRESHOLD=0.50, COMMIT_MATCH_THRESHOLD, CAPACITY_LIMIT
+SECURITY_THRESHOLD=0.50, FINANCE_THRESHOLD=0.50, COMMIT_MATCH_THRESHOLD, COMMIT_MATCH_MARGIN, CAPACITY_LIMIT, CAPACITY_NEW_HIRE_LIMIT
 # integrations
 JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY
 SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET
 GITHUB_WEBHOOK_SECRET
 # media
-CLOUDINARY_*, GOOGLE_APPLICATION_CREDENTIALS, WHISPERX_MODEL, HF_TOKEN
+CLOUDINARY_*, GOOGLE_APPLICATION_CREDENTIALS, TRANSCRIBER, TTS_PROVIDER, WHISPERX_MODEL, HF_TOKEN
 # observability
 LANGCHAIN_TRACING_V2, LANGCHAIN_API_KEY, LANGCHAIN_PROJECT
 ```

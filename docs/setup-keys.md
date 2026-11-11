@@ -12,6 +12,7 @@ This document lists every environment variable required by **Horizon Veridian**,
 | Variable Name | Required By | Phase | Where to Obtain / Notes |
 | :--- | :--- | :--- | :--- |
 | `APP_ENV` | All | 1 | Set to `development` or `production`. |
+| `DEMO_MODE` | All | 1–5 | Set to `true` to use deterministic local fallbacks when vendor API keys (Gnani/Jira/Slack/Supabase) are unset in development. |
 | `SHARED_HMAC_SECRET` | Media, WorkOS | 1, 3 | A 64-character random hex string for signing service-to-service HTTP requests (`python -c "import secrets; print(secrets.token_hex(32))"`). |
 | `FRONTEND_URL` | Web, WorkOS | 1 | Base URL of the web frontend (default: `http://localhost:3000`). |
 | `MEDIA_URL` | Web, WorkOS | 1 | URL of the media microservice (default: `http://localhost:5001`). |
@@ -58,12 +59,23 @@ This document lists every environment variable required by **Horizon Veridian**,
 
 ---
 
-## 5. AI Models & Embeddings
+## 5. Gnani AI & Reasoning Models
 
 | Variable Name | Required By | Phase | Where to Obtain / Notes |
 | :--- | :--- | :--- | :--- |
+| `GNANI_API_KEY` | Media | 3 | **Gnani AI Portal** (`app.gnani.ai`) → API key for Prisma V3.0 STT & Timbre TTS. |
+| `GNANI_TOKEN` | Media | 3 | **Gnani AI Portal** (`app.gnani.ai`) → Access token header. |
+| `GNANI_STT_ENDPOINT` | Media | 3 | Gnani Prisma STT endpoint (default: `https://api.gnani.ai/speech-to-text/v3`). |
+| `GNANI_TTS_ENDPOINT` | Media | 3 | Gnani Timbre TTS endpoint (default: `https://api.gnani.ai/text-to-speech/v1`). |
+| `GNANI_PRISMA_MODEL` | Media | 3 | Code-mixed STT model identifier (default: `Gnani Prisma V3.0`). |
+| `GNANI_TIMBRE_VOICE` | Media | 3 | Timbre voice profile (default: `indic-male-default`). |
+| `TRANSCRIBER` | Media | 3 | Transcription provider selector: `gnani_prisma`, `whisperx`, or `google_stt`. |
+| `TTS_PROVIDER` | Media | 3 | TTS provider selector: `gnani_timbre` or `google_tts`. |
+| `EVON_MODEL_NAME` | WorkOS | 4 | Sovereign Indic reasoning model (default: `gnani-ai/evon-30b`). |
+| `EVON_API_BASE` | WorkOS | 4 | OpenAI-compatible inference base URL (Hugging Face / vLLM). |
+| `EVON_API_KEY` | WorkOS | 4 | Hugging Face or vLLM API token (`HF_TOKEN`). |
 | `GEMINI_API_KEY` | Media, WorkOS | 1, 3, 4 | **Google AI Studio** (https://aistudio.google.com/) → Get API key. |
-| `NVIDIA_API_KEY` | WorkOS | 2, 4 | **NVIDIA Build** (https://build.nvidia.com/) → API key for Llama 3.1 & NV-Embed. |
+| `NVIDIA_API_KEY` | WorkOS | 2, 4 | **NVIDIA Build** (https://build.nvidia.com/) → API key for Llama 3.1 & NV-Embed (optional fallback). |
 | `NVIDIA_BASE_URL` | WorkOS | 2, 4 | NVIDIA NIM endpoint (default: `https://integrate.api.nvidia.com/v1`). |
 | `LLM_EXTRACTION_MODEL` | WorkOS | 3 | Name of model for task extraction (default: `gemini-2.0-flash`). |
 | `LLM_REASONING_MODEL` | WorkOS | 4 | Name of model for compliance resolution (default: `meta/llama-3.1-70b-instruct`). |
