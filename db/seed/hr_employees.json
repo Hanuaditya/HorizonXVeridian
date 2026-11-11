@@ -1,0 +1,85 @@
+{
+  "companyName": "Horizon Veridian Enterprise",
+  "generatedAt": "2026-11-11T09:00:00Z",
+  "employees": [
+    {
+      "id": "EMP-01042",
+      "displayName": "Arjun Rao",
+      "firstName": "Jason",
+      "lastName": "Yavorska",
+      "workEmail": "arjun.rao@example.com",
+      "department": "Product Management",
+      "jobTitle": "Group Product Manager, CI/CD",
+      "employmentStatus": "On Paternity Leave",
+      "leaveUntil": "2026-12-15",
+      "openTickets": 1,
+      "slackId": "U_ARJUN_DEMO",
+      "jiraAccountId": "jira-arjun-01"
+    },
+    {
+      "id": "EMP-01222",
+      "displayName": "Josh Lambert",
+      "firstName": "Josh",
+      "lastName": "Lambert",
+      "workEmail": "josh@veridian.local",
+      "department": "Platform Engineering",
+      "jobTitle": "Principal Infrastructure Engineer",
+      "employmentStatus": "Active",
+      "openTickets": 2,
+      "slackId": "U_JOSH_DEMO",
+      "jiraAccountId": "jira-josh-02"
+    },
+    {
+      "id": "EMP-04992",
+      "displayName": "Dov Hershkovitz",
+      "firstName": "Dov",
+      "lastName": "Hershkovitz",
+      "workEmail": "dov@veridian.local",
+      "department": "Infrastructure",
+      "jobTitle": "Engineering Lead (New Hire)",
+      "employmentStatus": "New Hire",
+      "openTickets": 3,
+      "slackId": "U_DOV_DEMO",
+      "jiraAccountId": "jira-dov-03"
+    },
+    {
+      "id": "EMP-00941",
+      "displayName": "Scott Williamson",
+      "firstName": "Scott",
+      "lastName": "Williamson",
+      "workEmail": "scott@veridian.local",
+      "department": "Security & Governance",
+      "jobTitle": "VP Security & Architecture",
+      "employmentStatus": "Active",
+      "openTickets": 4,
+      "slackId": "U_SCOTT_DEMO",
+      "jiraAccountId": "jira-scott-04"
+    },
+    {
+      "id": "EMP-02114",
+      "displayName": "Amit Sharma",
+      "firstName": "Amit",
+      "lastName": "Sharma",
+      "workEmail": "amit@veridian.local",
+      "department": "FinOps & Cloud Operations",
+      "jobTitle": "Finance Partner, Engineering",
+      "employmentStatus": "Active",
+      "openTickets": 1,
+      "slackId": "U_AMIT_DEMO",
+      "jiraAccountId": "jira-amit-05"
+    },
+    {
+      "id": "EMP-04988",
+      "displayName": "Gabe Weaver",
+      "firstName": "Gabe",
+      "lastName": "Weaver",
+      "workEmail": "gabe@veridian.local",
+      "department": "Product Management",
+      "jobTitle": "Product Manager (New Hire)",
+      "employmentStatus": "New Hire",
+      "openTickets": 1,
+      "slackId": "U_GABE_DEMO",
+      "jiraAccountId": "jira-gabe-06"
+    }
+  ]
+}

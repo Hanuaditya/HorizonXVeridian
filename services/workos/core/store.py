@@ -1,0 +1,872 @@
+"""Tenant-isolated data access layer for Horizon Veridian WorkOS.
+
+Uses Supabase (service role) with explicit ``org_id`` filtering on every query
+when configured, and seamlessly falls back to an offline tenant-isolated store
+seeded from ``db/seed/`` when ``DEMO_MODE=true`` and Supabase keys are unset.
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+import logging
+import os
+import threading
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from core.config import get_settings
+from core.embeddings import cosine_similarity, get_embedding
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _is_configured_supabase() -> bool:
+    settings = get_settings()
+    return bool(
+        settings.supabase_url
+        and settings.supabase_service_role_key
+        and "your-project" not in settings.supabase_url
+        and "placeholder" not in settings.supabase_service_role_key
+    )
+
+
+class LocalDemoStore:
+    """Thread-safe in-memory multi-tenant backing store for DEMO_MODE & unit tests."""
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self.reset()
+
+    def reset(self, seed_default_org: bool = True) -> None:
+        with self._lock:
+            self.organizations: Dict[str, Dict[str, Any]] = {}
+            self.employees: List[Dict[str, Any]] = []
+            self.hr_employees: List[Dict[str, Any]] = []
+            self.finance_budgets: List[Dict[str, Any]] = []
+            self.security_policies: List[Dict[str, Any]] = []
+            self.processed_meetings: Dict[tuple[str, str], Dict[str, Any]] = {}
+            self.meetings: Dict[str, Dict[str, Any]] = {}
+            self.transcripts: Dict[str, Dict[str, Any]] = {}
+            self.tasks: List[Dict[str, Any]] = []
+            self.resolutions: List[Dict[str, Any]] = []
+            self.approvals: List[Dict[str, Any]] = []
+            self.audit_trail: List[Dict[str, Any]] = []
+            self.slack_threads: List[Dict[str, Any]] = []
+            self.webhook_events: set[tuple[str, str]] = set()
+            self.thread_states: Dict[str, Dict[str, Any]] = {}
+            if seed_default_org:
+                self._seed_org("org_demo_horizon")
+
+    def _seed_org(self, org_id: str) -> None:
+        settings = get_settings()
+        self.organizations[org_id] = {
+            "id": org_id,
+            "name": "Horizon Veridian Enterprise Demo",
+            "slug": "horizon-veridian-demo",
+        }
+        hr_path = _REPO_ROOT / settings.hr_json_path
+        if hr_path.exists():
+            data = json.loads(hr_path.read_text(encoding="utf-8"))
+            now_iso = datetime.now(timezone.utc).isoformat()
+            for emp in data.get("employees", []):
+                raw_status = emp.get("employmentStatus", "Active")
+                norm_status = _normalize_hr_status(raw_status)
+                self.hr_employees.append({
+                    "id": str(uuid.uuid4()),
+                    "org_id": org_id,
+                    "full_name": emp["displayName"],
+                    "email": emp.get("workEmail"),
+                    "department": emp.get("department"),
+                    "job_title": emp.get("jobTitle"),
+                    "status": norm_status,
+                    "leave_until": emp.get("leaveUntil"),
+                    "last_synced_from": "BambooHR connector (seed)",
+                    "synced_at": now_iso,
+                })
+                self.employees.append({
+                    "id": str(uuid.uuid4()),
+                    "org_id": org_id,
+                    "clerk_user_id": f"user_demo_{emp['firstName'].lower()}",
+                    "full_name": emp["displayName"],
+                    "email": emp.get("workEmail"),
+                    "slack_id": emp.get("slackId"),
+                    "jira_account_id": emp.get("jiraAccountId"),
+                    "status": norm_status,
+                    "active": norm_status in {"ACTIVE", "NEW_HIRE"},
+                    "capacity_cache": int(emp.get("openTickets", 0)),
+                    "last_synced_from": "Seed / Jira capacity cache",
+                    "synced_at": now_iso,
+                })
+
+        csv_path = _REPO_ROOT / settings.finance_csv_path
+        if csv_path.exists():
+            now_iso = datetime.now(timezone.utc).isoformat()
+            with csv_path.open("r", encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    cat_raw = (row.get("Category") or "").strip()
+                    if not cat_raw:
+                        continue
+                    cat_key = cat_raw.split()[0].lower()
+                    notes = (row.get("Notes") or "").strip()
+                    emb = get_embedding(f"{cat_raw} {notes}")
+                    self.finance_budgets.append({
+                        "id": str(uuid.uuid4()),
+                        "org_id": org_id,
+                        "category": cat_key,
+                        "budget_remaining": float(row.get("Budget Remaining") or 0),
+                        "currency": (row.get("Currency") or "INR").strip(),
+                        "owner": (row.get("Owner") or "Finance").strip(),
+                        "embedding": emb,
+                        "last_synced_from": "finance_budgets.csv",
+                        "synced_at": now_iso,
+                    })
+
+        sec_path = _REPO_ROOT / settings.security_policy_path
+        if sec_path.exists():
+            now_iso = datetime.now(timezone.utc).isoformat()
+            chunks = _parse_security_markdown(sec_path.read_text(encoding="utf-8"))
+            for idx, (pol_id, chunk_text) in enumerate(chunks, start=1):
+                self.security_policies.append({
+                    "id": str(uuid.uuid4()),
+                    "org_id": org_id,
+                    "policy_id": pol_id,
+                    "document_name": "Veridian Global Information Security Policy v4.2",
+                    "chunk_text": chunk_text,
+                    "page_number": idx,
+                    "embedding": get_embedding(f"{pol_id} {chunk_text}"),
+                    "synced_at": now_iso,
+                })
+
+
+def _normalize_hr_status(raw: str) -> str:
+    low = (raw or "").lower()
+    if "paternity" in low:
+        return "ON_PATERNITY_LEAVE"
+    if "maternity" in low:
+        return "ON_MATERNITY_LEAVE"
+    if "leave" in low:
+        return "ON_LEAVE"
+    if "terminat" in low:
+        return "TERMINATED"
+    if "new" in low and "hire" in low:
+        return "NEW_HIRE"
+    if "active" in low:
+        return "ACTIVE"
+    return "INACTIVE"
+
+
+def _parse_security_markdown(text: str) -> List[tuple[str, str]]:
+    sections: List[tuple[str, str]] = []
+    current_id: Optional[str] = None
+    current_lines: List[str] = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if current_id and current_lines:
+                sections.append((current_id, "\n".join(current_lines).strip()))
+            header = line[3:].strip()
+            current_id = header.split(":", 1)[0].strip()
+            current_lines = [header]
+        elif current_id:
+            if line.strip():
+                current_lines.append(line.strip())
+    if current_id and current_lines:
+        sections.append((current_id, "\n".join(current_lines).strip()))
+    return sections
+
+
+_local_store = LocalDemoStore()
+_supabase_client: Any = None
+
+
+def get_local_store() -> LocalDemoStore:
+    return _local_store
+
+
+def _get_supabase():
+    global _supabase_client
+    if _supabase_client is None:
+        from supabase import create_client
+        settings = get_settings()
+        _supabase_client = create_client(
+            settings.supabase_url,
+            settings.supabase_service_role_key,
+        )
+    return _supabase_client
+
+
+def using_live_supabase() -> bool:
+    return _is_configured_supabase()
+
+
+# ----------------------------------------------------------------------------
+# Startup Assertion: DB Vector Dimension == EMBEDDING_DIM
+# ----------------------------------------------------------------------------
+
+def assert_embedding_dimension_match() -> int:
+    """Verify configured EMBEDDING_DIM matches database vector column definitions."""
+    settings = get_settings()
+    expected_dim = settings.embedding_dim
+
+    if using_live_supabase():
+        sb = _get_supabase()
+        resp = sb.rpc("get_vector_column_dimensions", {}).execute()
+        rows = resp.data or []
+        for row in rows:
+            col_dim = int(row["dim"])
+            if col_dim != expected_dim:
+                raise RuntimeError(
+                    f"Vector dimension mismatch on {row['table_name']}.{row['column_name']}: "
+                    f"DB has vector({col_dim}), EMBEDDING_DIM is {expected_dim}"
+                )
+        logger.info("Startup vector dimension check passed against Supabase (%d).", expected_dim)
+        return expected_dim
+
+    # Validate local store / schema expectation
+    for row in _local_store.security_policies + _local_store.finance_budgets:
+        emb = row.get("embedding")
+        if emb is not None and len(emb) != expected_dim:
+            raise RuntimeError(
+                f"Local vector dimension mismatch: stored len={len(emb)} vs EMBEDDING_DIM={expected_dim}"
+            )
+    logger.info("Startup vector dimension check passed in offline mode (%d).", expected_dim)
+    return expected_dim
+
+
+# ----------------------------------------------------------------------------
+# Org-Scoped Repository Operations (always explicit org_id)
+# ----------------------------------------------------------------------------
+
+def is_meeting_processed(org_id: str, meeting_id: str) -> bool:
+    if using_live_supabase():
+        sb = _get_supabase()
+        res = (
+            sb.table("processed_meetings")
+            .select("meeting_id")
+            .eq("org_id", org_id)
+            .eq("meeting_id", meeting_id)
+            .execute()
+        )
+        return bool(res.data)
+    with _local_store._lock:
+        return (org_id, meeting_id) in _local_store.processed_meetings
+
+
+def mark_meeting_processed(
+    org_id: str,
+    meeting_id: str,
+    thread_id: str,
+    task_count: int = 0,
+) -> None:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if using_live_supabase():
+        sb = _get_supabase()
+        sb.table("processed_meetings").upsert(
+            {
+                "org_id": org_id,
+                "meeting_id": meeting_id,
+                "thread_id": thread_id,
+                "processed_at": now_iso,
+                "task_count": task_count,
+            },
+            on_conflict="org_id,meeting_id",
+        ).execute()
+        return
+    with _local_store._lock:
+        _local_store.processed_meetings[(org_id, meeting_id)] = {
+            "org_id": org_id,
+            "meeting_id": meeting_id,
+            "thread_id": thread_id,
+            "processed_at": now_iso,
+            "task_count": task_count,
+        }
+
+
+def list_employees(org_id: str) -> List[Dict[str, Any]]:
+    if using_live_supabase():
+        sb = _get_supabase()
+        res = (
+            sb.table("employees")
+            .select("*")
+            .eq("org_id", org_id)
+            .execute()
+        )
+        return res.data or []
+    with _local_store._lock:
+        return [dict(e) for e in _local_store.employees if e["org_id"] == org_id]
+
+
+def upsert_employee_mapping(
+    org_id: str,
+    full_name: str,
+    clerk_user_id: Optional[str] = None,
+    slack_id: Optional[str] = None,
+    jira_account_id: Optional[str] = None,
+    email: Optional[str] = None,
+) -> Dict[str, Any]:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if using_live_supabase():
+        sb = _get_supabase()
+        payload = {
+            "org_id": org_id,
+            "full_name": full_name,
+            "clerk_user_id": clerk_user_id,
+            "slack_id": slack_id,
+            "jira_account_id": jira_account_id,
+            "email": email,
+            "synced_at": now_iso,
+        }
+        payload = {k: v for k, v in payload.items() if v is not None}
+        res = sb.table("employees").upsert(payload, on_conflict="org_id,full_name").execute()
+        return (res.data or [payload])[0]
+    with _local_store._lock:
+        for e in _local_store.employees:
+            if e["org_id"] == org_id and e["full_name"].lower() == full_name.lower():
+                if clerk_user_id is not None:
+                    e["clerk_user_id"] = clerk_user_id
+                if slack_id is not None:
+                    e["slack_id"] = slack_id
+                if jira_account_id is not None:
+                    e["jira_account_id"] = jira_account_id
+                if email is not None:
+                    e["email"] = email
+                e["synced_at"] = now_iso
+                return dict(e)
+        row = {
+            "id": str(uuid.uuid4()),
+            "org_id": org_id,
+            "full_name": full_name,
+            "clerk_user_id": clerk_user_id,
+            "slack_id": slack_id,
+            "jira_account_id": jira_account_id,
+            "email": email,
+            "status": "ACTIVE",
+            "active": True,
+            "capacity_cache": 0,
+            "synced_at": now_iso,
+        }
+        _local_store.employees.append(row)
+        return dict(row)
+
+
+def lookup_hr_employee(org_id: str, assignee_name: str) -> Optional[Dict[str, Any]]:
+    if using_live_supabase():
+        sb = _get_supabase()
+        res = (
+            sb.table("hr_employees")
+            .select("full_name, status, last_synced_from, synced_at")
+            .eq("org_id", org_id)
+            .ilike("full_name", f"%{assignee_name}%")
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    needle = assignee_name.strip().lower()
+    with _local_store._lock:
+        for row in _local_store.hr_employees:
+            if row["org_id"] == org_id and needle in row["full_name"].lower():
+                return dict(row)
+        return None
+
+
+def find_least_loaded_active_employee(
+    org_id: str,
+    exclude_name: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    if using_live_supabase():
+        sb = _get_supabase()
+        res = (
+            sb.table("employees")
+            .select("full_name, capacity_cache, last_synced_from, status")
+            .eq("org_id", org_id)
+            .eq("status", "ACTIVE")
+            .order("capacity_cache", desc=False)
+            .execute()
+        )
+        rows = res.data or []
+    else:
+        with _local_store._lock:
+            rows = sorted(
+                [
+                    dict(e)
+                    for e in _local_store.employees
+                    if e["org_id"] == org_id and e["status"] == "ACTIVE"
+                ],
+                key=lambda x: x.get("capacity_cache", 0),
+            )
+    for r in rows:
+        if exclude_name and exclude_name.lower() in r["full_name"].lower():
+            continue
+        return r
+    return None
+
+
+def query_finance_budgets_semantic(
+    org_id: str,
+    query_embedding: List[float],
+    threshold: float,
+    limit: int = 3,
+) -> List[Dict[str, Any]]:
+    if using_live_supabase():
+        sb = _get_supabase()
+        res = sb.rpc(
+            "match_finance_budgets",
+            {
+                "p_org_id": org_id,
+                "query_embedding": query_embedding,
+                "match_threshold": threshold,
+                "match_count": limit,
+            },
+        ).execute()
+        return res.data or []
+
+    scored: List[Dict[str, Any]] = []
+    with _local_store._lock:
+        for row in _local_store.finance_budgets:
+            if row["org_id"] != org_id or not row.get("embedding"):
+                continue
+            sim = cosine_similarity(query_embedding, row["embedding"])
+            if sim >= threshold:
+                item = {k: v for k, v in row.items() if k != "embedding"}
+                item["similarity"] = sim
+                scored.append(item)
+    scored.sort(key=lambda x: x["similarity"], reverse=True)
+    return scored[:limit]
+
+
+def query_security_policies_semantic(
+    org_id: str,
+    query_embedding: List[float],
+    threshold: float,
+    limit: int = 3,
+) -> List[Dict[str, Any]]:
+    if using_live_supabase():
+        sb = _get_supabase()
+        res = sb.rpc(
+            "match_security_policies",
+            {
+                "p_org_id": org_id,
+                "query_embedding": query_embedding,
+                "match_threshold": threshold,
+                "match_count": limit,
+            },
+        ).execute()
+        return res.data or []
+
+    scored: List[Dict[str, Any]] = []
+    with _local_store._lock:
+        for row in _local_store.security_policies:
+            if row["org_id"] != org_id or not row.get("embedding"):
+                continue
+            sim = cosine_similarity(query_embedding, row["embedding"])
+            if sim >= threshold:
+                item = {k: v for k, v in row.items() if k != "embedding"}
+                item["similarity"] = sim
+                scored.append(item)
+    scored.sort(key=lambda x: x["similarity"], reverse=True)
+    return scored[:limit]
+
+
+def query_open_tasks_semantic(
+    org_id: str,
+    query_embedding: List[float],
+    assignee: Optional[str],
+    threshold: float,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    if using_live_supabase():
+        sb = _get_supabase()
+        res = sb.rpc(
+            "match_open_tasks",
+            {
+                "p_org_id": org_id,
+                "query_embedding": query_embedding,
+                "p_assignee": assignee,
+                "match_threshold": threshold,
+                "match_count": limit,
+            },
+        ).execute()
+        return res.data or []
+
+    scored: List[Dict[str, Any]] = []
+    with _local_store._lock:
+        for row in _local_store.tasks:
+            if row["org_id"] != org_id:
+                continue
+            if row.get("status") not in {"DISPATCHED", "OPEN", "BLOCKED"}:
+                continue
+            effective_assignee = (row.get("rerouted_assignee") or row.get("assignee") or "").lower()
+            if assignee and assignee.lower() not in effective_assignee and effective_assignee not in assignee.lower():
+                continue
+            emb = row.get("embedding")
+            if not emb:
+                continue
+            sim = cosine_similarity(query_embedding, emb)
+            if sim >= threshold:
+                item = {k: v for k, v in row.items() if k != "embedding"}
+                item["similarity"] = sim
+                scored.append(item)
+    scored.sort(key=lambda x: x["similarity"], reverse=True)
+    return scored[:limit]
+
+
+def upsert_tasks(org_id: str, meeting_id: str, thread_id: str, tasks: Dict[str, Dict[str, Any]]) -> None:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rows: List[Dict[str, Any]] = []
+    for task_id, task in tasks.items():
+        title_for_vec = task.get("reframed_title") or task.get("title") or ""
+        rows.append({
+            "task_id": task_id,
+            "org_id": org_id,
+            "meeting_id": meeting_id,
+            "thread_id": thread_id,
+            "title": task.get("title", ""),
+            "reframed_title": task.get("reframed_title"),
+            "reframed_description": task.get("reframed_description"),
+            "assignee": task.get("assignee", "UNASSIGNED"),
+            "rerouted_assignee": task.get("rerouted_assignee"),
+            "resource_type": task.get("resource_type", "unknown"),
+            "transcript_quote": task.get("transcript_quote", ""),
+            "status": task.get("status", "PENDING"),
+            "hr_status": task.get("hr_status"),
+            "hr_provenance": task.get("hr_provenance"),
+            "finance_flag": task.get("finance_flag"),
+            "finance_provenance": task.get("finance_provenance"),
+            "security_flag": task.get("security_flag"),
+            "security_confidence": task.get("security_confidence"),
+            "security_provenance": task.get("security_provenance"),
+            "capacity_flag": task.get("capacity_flag"),
+            "capacity_provenance": task.get("capacity_provenance"),
+            "jira_key": task.get("jira_ticket_id") or task.get("jira_key"),
+            "jira_url": task.get("jira_url"),
+            "slack_dm_sent": bool(task.get("slack_dm_sent", False)),
+            "embedding": get_embedding(f"{title_for_vec} {task.get('transcript_quote', '')}"),
+            "updated_at": now_iso,
+        })
+
+    if not rows:
+        return
+
+    if using_live_supabase():
+        sb = _get_supabase()
+        sb.table("tasks").upsert(rows, on_conflict="org_id,meeting_id,task_id").execute()
+        return
+
+    with _local_store._lock:
+        for r in rows:
+            matched = next(
+                (
+                    existing
+                    for existing in _local_store.tasks
+                    if existing["org_id"] == org_id
+                    and existing["meeting_id"] == meeting_id
+                    and existing["task_id"] == r["task_id"]
+                ),
+                None,
+            )
+            if matched is not None:
+                matched.update(r)
+            else:
+                r["id"] = str(uuid.uuid4())
+                r["created_at"] = now_iso
+                _local_store.tasks.append(r)
+
+
+def save_resolutions(org_id: str, meeting_id: str, thread_id: str, resolutions: List[Dict[str, Any]]) -> None:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rows = [
+        {
+            "org_id": org_id,
+            "meeting_id": meeting_id,
+            "thread_id": thread_id,
+            "task_id": r["task_id"],
+            "conflict_type": r["conflict_type"],
+            "suggested_action": r["suggested_action"],
+            "provenance_tag": r.get("provenance_tag"),
+            "new_payload": r.get("new_payload"),
+            "created_at": now_iso,
+        }
+        for r in resolutions
+    ]
+    if not rows:
+        return
+    if using_live_supabase():
+        sb = _get_supabase()
+        sb.table("resolutions").insert(rows).execute()
+        return
+    with _local_store._lock:
+        _local_store.resolutions.extend(rows)
+
+
+def record_approval(
+    org_id: str,
+    thread_id: str,
+    meeting_id: str,
+    decisions: Dict[str, str],
+    approver_user_id: str,
+) -> None:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rows = [
+        {
+            "org_id": org_id,
+            "thread_id": thread_id,
+            "meeting_id": meeting_id,
+            "task_id": tid,
+            "approver_user_id": approver_user_id,
+            "decision": dec,
+            "created_at": now_iso,
+        }
+        for tid, dec in decisions.items()
+    ]
+    if not rows:
+        return
+    if using_live_supabase():
+        sb = _get_supabase()
+        sb.table("approvals").insert(rows).execute()
+        return
+    with _local_store._lock:
+        _local_store.approvals.extend(rows)
+
+
+def write_audit_trail(
+    org_id: str,
+    meeting_id: str,
+    event_type: str,
+    provenance_tag: str,
+    agent_node: str = "",
+    detail: str = "",
+    confidence: Optional[float] = None,
+    thread_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    actor_id: Optional[str] = None,
+) -> None:
+    row = {
+        "org_id": org_id,
+        "meeting_id": meeting_id,
+        "thread_id": thread_id,
+        "task_id": task_id,
+        "event_type": event_type,
+        "agent_node": agent_node,
+        "detail": detail,
+        "confidence": confidence,
+        "provenance_tag": provenance_tag,
+        "actor_id": actor_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if using_live_supabase():
+        try:
+            sb = _get_supabase()
+            sb.table("audit_trail").insert(row).execute()
+        except Exception as exc:
+            logger.warning("write_audit_trail failed (non-fatal): %s", exc)
+        return
+    with _local_store._lock:
+        row["id"] = str(uuid.uuid4())
+        _local_store.audit_trail.append(row)
+
+
+def list_audit_trail(org_id: str, meeting_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    if using_live_supabase():
+        sb = _get_supabase()
+        q = sb.table("audit_trail").select("*").eq("org_id", org_id)
+        if meeting_id:
+            q = q.eq("meeting_id", meeting_id)
+        res = q.order("created_at", desc=True).limit(100).execute()
+        return res.data or []
+    with _local_store._lock:
+        items = [dict(r) for r in _local_store.audit_trail if r["org_id"] == org_id]
+        if meeting_id:
+            items = [r for r in items if r["meeting_id"] == meeting_id]
+        return list(reversed(items))
+
+
+def record_webhook_event_once(provider: str, event_id: str, org_id: Optional[str] = None) -> bool:
+    """Return True if event_id is new and recorded; False if it was already processed."""
+    if not event_id:
+        return True
+    if using_live_supabase():
+        sb = _get_supabase()
+        existing = (
+            sb.table("webhook_events")
+            .select("event_id")
+            .eq("provider", provider)
+            .eq("event_id", event_id)
+            .execute()
+        )
+        if existing.data:
+            return False
+        sb.table("webhook_events").insert({
+            "provider": provider,
+            "event_id": event_id,
+            "org_id": org_id,
+        }).execute()
+        return True
+    key = (provider, event_id)
+    with _local_store._lock:
+        if key in _local_store.webhook_events:
+            return False
+        _local_store.webhook_events.add(key)
+        return True
+
+
+def upsert_slack_thread(
+    org_id: str,
+    thread_id: str,
+    task_id: str,
+    jira_key: Optional[str],
+    slack_channel: str,
+    slack_thread_ts: str,
+    assignee: str,
+    turn_count: int = 0,
+    status: str = "OPEN",
+) -> Dict[str, Any]:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    row = {
+        "org_id": org_id,
+        "thread_id": thread_id,
+        "task_id": task_id,
+        "jira_key": jira_key,
+        "slack_channel": slack_channel,
+        "slack_thread_ts": slack_thread_ts,
+        "assignee": assignee,
+        "turn_count": turn_count,
+        "status": status,
+        "updated_at": now_iso,
+    }
+    if using_live_supabase():
+        sb = _get_supabase()
+        res = sb.table("slack_threads").upsert(
+            row, on_conflict="org_id,slack_channel,slack_thread_ts"
+        ).execute()
+        return (res.data or [row])[0]
+    with _local_store._lock:
+        for existing in _local_store.slack_threads:
+            if (
+                existing["org_id"] == org_id
+                and existing["slack_channel"] == slack_channel
+                and existing["slack_thread_ts"] == slack_thread_ts
+            ):
+                existing.update(row)
+                return dict(existing)
+        row["id"] = str(uuid.uuid4())
+        _local_store.slack_threads.append(row)
+        return dict(row)
+
+
+def get_slack_thread(org_id: str, slack_channel: str, slack_thread_ts: str) -> Optional[Dict[str, Any]]:
+    if using_live_supabase():
+        sb = _get_supabase()
+        res = (
+            sb.table("slack_threads")
+            .select("*")
+            .eq("org_id", org_id)
+            .eq("slack_channel", slack_channel)
+            .eq("slack_thread_ts", slack_thread_ts)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    with _local_store._lock:
+        for row in _local_store.slack_threads:
+            if (
+                row["org_id"] == org_id
+                and row["slack_channel"] == slack_channel
+                and row["slack_thread_ts"] == slack_thread_ts
+            ):
+                return dict(row)
+        return None
+
+
+def update_task_status_by_id(org_id: str, task_id: str, status: str, jira_key: Optional[str] = None) -> None:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if using_live_supabase():
+        sb = _get_supabase()
+        q = sb.table("tasks").update({"status": status, "updated_at": now_iso}).eq("org_id", org_id).eq("task_id", task_id)
+        q.execute()
+        return
+    with _local_store._lock:
+        for t in _local_store.tasks:
+            if t["org_id"] == org_id and t["task_id"] == task_id:
+                t["status"] = status
+                t["updated_at"] = now_iso
+                if jira_key:
+                    t["jira_key"] = jira_key
+
+
+def save_thread_snapshot(thread_id: str, org_id: str, snapshot: Dict[str, Any]) -> None:
+    with _local_store._lock:
+        _local_store.thread_states[thread_id] = {
+            **snapshot,
+            "thread_id": thread_id,
+            "org_id": org_id,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+def get_thread_snapshot(thread_id: str) -> Optional[Dict[str, Any]]:
+    with _local_store._lock:
+        snap = _local_store.thread_states.get(thread_id)
+        return dict(snap) if snap else None
+
+
+def list_thread_snapshots(org_id: str) -> List[Dict[str, Any]]:
+    with _local_store._lock:
+        items = [
+            dict(s)
+            for s in _local_store.thread_states.values()
+            if s.get("org_id") == org_id
+        ]
+        items.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        return items
+
+
+def upsert_hr_records(org_id: str, hr_rows: List[Dict[str, Any]], emp_rows: List[Dict[str, Any]]) -> int:
+    if using_live_supabase():
+        sb = _get_supabase()
+        sb.table("hr_employees").delete().eq("org_id", org_id).execute()
+        if hr_rows:
+            sb.table("hr_employees").insert(hr_rows).execute()
+        for emp in emp_rows:
+            sb.table("employees").upsert(emp, on_conflict="org_id,full_name").execute()
+        return len(hr_rows)
+    with _local_store._lock:
+        _local_store.hr_employees = [r for r in _local_store.hr_employees if r["org_id"] != org_id] + hr_rows
+        for emp in emp_rows:
+            existing = next(
+                (e for e in _local_store.employees if e["org_id"] == org_id and e["full_name"] == emp["full_name"]),
+                None,
+            )
+            if existing:
+                existing.update(emp)
+            else:
+                _local_store.employees.append(emp)
+        return len(hr_rows)
+
+
+def upsert_finance_budgets(org_id: str, rows: List[Dict[str, Any]]) -> int:
+    if using_live_supabase():
+        sb = _get_supabase()
+        if rows:
+            sb.table("finance_budgets").upsert(rows, on_conflict="org_id,category").execute()
+        return len(rows)
+    with _local_store._lock:
+        _local_store.finance_budgets = [
+            r for r in _local_store.finance_budgets if r["org_id"] != org_id
+        ] + rows
+        return len(rows)
+
+
+def upsert_security_policies(org_id: str, rows: List[Dict[str, Any]]) -> int:
+    if using_live_supabase():
+        sb = _get_supabase()
+        sb.table("security_policies").delete().eq("org_id", org_id).execute()
+        if rows:
+            sb.table("security_policies").insert(rows).execute()
+        return len(rows)
+    with _local_store._lock:
+        _local_store.security_policies = [
+            r for r in _local_store.security_policies if r["org_id"] != org_id
+        ] + rows
+        return len(rows)

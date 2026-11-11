@@ -13,6 +13,7 @@
     "type-check": "npm --prefix apps/web run type-check",
     "contracts:generate": "python packages/contracts/scripts/generate_contracts.py",
     "contracts:check": "python packages/contracts/scripts/generate_contracts.py --check",
+    "seed": "python -m db.seed.seed_cli",
     "test:contracts": "npm run contracts:check"
   }
 }

@@ -1,0 +1,5 @@
+Category,Budget Remaining,Currency,Owner,Notes
+COMPUTE_INFRA Enterprise Compute Cluster Provisioning,0,INR,Amit Sharma,"Zero Q4 compute budget remaining for enterprise cluster / Elastic / AWS provisioning without executive sign-off"
+CLOUD_STAGING_SANDBOX Staging & Test Environments,450000,INR,Josh Lambert,"Approved staging compute sandbox pool"
+DEVELOPER_TOOLING IDE & CI Runners,300000,INR,Platform Engineering,"Standard engineering tooling budget"
+SECURITY_AUDITS Compliance & Pentest Audits,600000,INR,Scott Williamson,"Allocated security governance reserve"
