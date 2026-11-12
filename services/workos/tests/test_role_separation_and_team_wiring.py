@@ -93,6 +93,8 @@ def test_jira_email_to_account_id_lookup(monkeypatch):
     monkeypatch.setenv("JIRA_EMAIL", "bot@veridian.local")
     monkeypatch.setenv("JIRA_API_TOKEN", "test_jira_token")
 
+    monkeypatch.setattr(jops, "has_real_jira_creds", lambda: True)
+
     captured_requests = []
 
     def mock_jira_get(url, **kwargs):
@@ -141,13 +143,28 @@ def test_individual_slack_dm_routing(monkeypatch):
     """Verify distinct Slack DM routing to Manager, Employee A, and Employee B."""
     import connectors.slack_ops as s_ops
 
+    # Ensure deterministic test mappings independent of local untracked identity files
+    monkeypatch.setattr(s_ops, "MANAGER_SLACK_USER_ID", "U_MGR_DEMO")
+    monkeypatch.setattr(s_ops, "EMPLOYEE_A_SLACK_USER_ID", "U_EMP_A_DEMO")
+    monkeypatch.setattr(s_ops, "EMPLOYEE_B_SLACK_USER_ID", "U_EMP_B_DEMO")
+    test_user_map = {
+        "manager": "U_MGR_DEMO",
+        "aarav sharma": "U_MGR_DEMO",
+        "aarav.sharma@example.com": "U_MGR_DEMO",
+        "rohan patel": "U_EMP_A_DEMO",
+        "rohan.patel@example.com": "U_EMP_A_DEMO",
+        "priya sen": "U_EMP_B_DEMO",
+        "priya.sen@example.com": "U_EMP_B_DEMO",
+    }
+    monkeypatch.setattr(s_ops, "_SLACK_USER_MAP", test_user_map)
+
     # 1. Verify user ID resolver maps to exact Slack IDs
-    assert resolve_slack_user_id("Manager", role="manager") == MANAGER_SLACK_USER_ID
-    assert resolve_slack_user_id("Aarav Sharma", role="manager") == MANAGER_SLACK_USER_ID
-    assert resolve_slack_user_id("Rohan Patel", role="employee") == EMPLOYEE_A_SLACK_USER_ID
-    assert resolve_slack_user_id("rohan.patel@example.com", role="employee") == EMPLOYEE_A_SLACK_USER_ID
-    assert resolve_slack_user_id("Priya Sen", role="employee") == EMPLOYEE_B_SLACK_USER_ID
-    assert resolve_slack_user_id("priya.sen@example.com", role="employee") == EMPLOYEE_B_SLACK_USER_ID
+    assert resolve_slack_user_id("Manager", role="manager") == s_ops.MANAGER_SLACK_USER_ID
+    assert resolve_slack_user_id("Aarav Sharma", role="manager") == s_ops.MANAGER_SLACK_USER_ID
+    assert resolve_slack_user_id("Rohan Patel", role="employee") == s_ops.EMPLOYEE_A_SLACK_USER_ID
+    assert resolve_slack_user_id("rohan.patel@example.com", role="employee") == s_ops.EMPLOYEE_A_SLACK_USER_ID
+    assert resolve_slack_user_id("Priya Sen", role="employee") == s_ops.EMPLOYEE_B_SLACK_USER_ID
+    assert resolve_slack_user_id("priya.sen@example.com", role="employee") == s_ops.EMPLOYEE_B_SLACK_USER_ID
 
     # 2. In live mode with mock WebClient, verify conversations_open is called per user
     monkeypatch.setenv("DEMO_MODE", "false")
@@ -172,7 +189,7 @@ def test_individual_slack_dm_routing(monkeypatch):
         text="Review menu",
     )
     assert ok is True
-    assert ch_mgr == f"D_FOR_{MANAGER_SLACK_USER_ID}"
+    assert ch_mgr == f"D_FOR_{s_ops.MANAGER_SLACK_USER_ID}"
 
     # Employee A 1-on-1 DM
     ok_a, ch_a, _ = post_employee_assignment_dm(
@@ -187,7 +204,7 @@ def test_individual_slack_dm_routing(monkeypatch):
         quote="Deploy elastic",
     )
     assert ok_a is True
-    assert ch_a == f"D_FOR_{EMPLOYEE_A_SLACK_USER_ID}"
+    assert ch_a == f"D_FOR_{s_ops.EMPLOYEE_A_SLACK_USER_ID}"
 
     # Employee B 1-on-1 DM
     ok_b, ch_b, _ = post_employee_assignment_dm(
@@ -202,7 +219,7 @@ def test_individual_slack_dm_routing(monkeypatch):
         quote="React auth flow",
     )
     assert ok_b is True
-    assert ch_b == f"D_FOR_{EMPLOYEE_B_SLACK_USER_ID}"
+    assert ch_b == f"D_FOR_{s_ops.EMPLOYEE_B_SLACK_USER_ID}"
 
 
 def test_smart_leave_redirection_recommends_catchme_if():

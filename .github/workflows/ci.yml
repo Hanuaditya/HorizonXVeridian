@@ -11,9 +11,9 @@ jobs:
     name: Validate Contracts & Schema Drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Verify Generated Contracts are Fresh
@@ -24,9 +24,9 @@ jobs:
     name: Validate Python Services
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install Media Service Dependencies
@@ -52,11 +52,11 @@ jobs:
     name: Validate Web App (Next.js 15)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "20"
       - name: Install Dependencies
         working-directory: ./apps/web
         run: npm ci --workspaces=false
