@@ -27,3 +27,4 @@ The baseline architecture relied exclusively on:
 
 - **Positive:** Immediate offline end-to-end execution of the Hinglish golden demo flow and test suite before live credentials are inserted; seamless drop-in upgrade to live Gnani Prisma V3.0, Timbre, Evon 30B, Supabase pgvector, Clerk, Jira, and Slack once keys are added to `.env`.
 - **Negative / Risks:** Two code paths exist inside provider wrappers (`live` vs `DEMO_MODE` fallback); mitigated by strict contract validation (`packages/contracts`) and automated tests for both mocked HTTP clients and deterministic demo execution.
+

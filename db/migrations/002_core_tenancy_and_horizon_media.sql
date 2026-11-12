@@ -191,3 +191,4 @@ CREATE POLICY recordings_tenant_isolation ON public.recordings
     FOR ALL
     USING (org_id = public.current_org_id())
     WITH CHECK (org_id = public.current_org_id());
+

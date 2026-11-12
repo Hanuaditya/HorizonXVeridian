@@ -63,11 +63,13 @@ This document lists every environment variable required by **Horizon Veridian**,
 
 | Variable Name | Required By | Phase | Where to Obtain / Notes |
 | :--- | :--- | :--- | :--- |
-| `GNANI_API_KEY` | Media | 3 | **Gnani AI Portal** (`app.gnani.ai`) → API key for Prisma V3.0 STT & Timbre TTS. |
-| `GNANI_TOKEN` | Media | 3 | **Gnani AI Portal** (`app.gnani.ai`) → Access token header. |
-| `GNANI_STT_ENDPOINT` | Media | 3 | Gnani Prisma STT endpoint (default: `https://api.gnani.ai/speech-to-text/v3`). |
-| `GNANI_TTS_ENDPOINT` | Media | 3 | Gnani Timbre TTS endpoint (default: `https://api.gnani.ai/text-to-speech/v1`). |
-| `GNANI_PRISMA_MODEL` | Media | 3 | Code-mixed STT model identifier (default: `Gnani Prisma V3.0`). |
+| `GNANI_API_KEY` | Media | 3 | **Gnani Vachana Portal** (`api.vachana.ai`) → API key passed via `X-API-Key-ID` header. |
+| `GNANI_TOKEN` | Media | 3 | Optional Bearer token if required alongside `GNANI_API_KEY`. |
+| `GNANI_BASE_URL` | Media | 3 | Vachana API base URL (default: `https://api.vachana.ai`). |
+| `GNANI_STT_ENDPOINT` | Media | 3 | Gnani Prisma STT endpoint (default: `https://api.vachana.ai/stt/v3`). |
+| `GNANI_TTS_ENDPOINT` | Media | 3 | Gnani Timbre TTS endpoint (default: `https://api.vachana.ai/api/v1/tts/inference`). |
+| `GNANI_PRISMA_MODEL` | Media | 3 | Code-mixed STT model identifier (default: `prisma-v3.0`). |
+| `GNANI_TIMBRE_MODEL` | Media | 3 | TTS model identifier (default: `timbre-v2.5`). |
 | `GNANI_TIMBRE_VOICE` | Media | 3 | Timbre voice profile (default: `indic-male-default`). |
 | `TRANSCRIBER` | Media | 3 | Transcription provider selector: `gnani_prisma`, `whisperx`, or `google_stt`. |
 | `TTS_PROVIDER` | Media | 3 | TTS provider selector: `gnani_timbre` or `google_tts`. |

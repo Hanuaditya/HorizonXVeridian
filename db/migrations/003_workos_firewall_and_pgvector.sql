@@ -402,3 +402,4 @@ CREATE POLICY audit_trail_tenant_insert ON public.audit_trail
 
 CREATE POLICY slack_threads_tenant_isolation ON public.slack_threads
     FOR ALL USING (org_id = public.current_org_id()) WITH CHECK (org_id = public.current_org_id());
+

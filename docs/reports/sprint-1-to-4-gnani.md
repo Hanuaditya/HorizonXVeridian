@@ -30,3 +30,4 @@
 - Paste live Supabase, Clerk, Stream.io, Gnani AI (`GNANI_API_KEY`, `GNANI_TOKEN`), HuggingFace/Evon (`EVON_API_KEY`), Jira, and Slack credentials into `C:\dev\horizon-veridian\.env`.
 - Apply `db/migrations/001`–`003` and `db/seed/seed_data.sql` to live Supabase.
 - Run Playwright E2E and golden-transcript eval calibration against `evals/` (Phase 7/8).
+

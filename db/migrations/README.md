@@ -19,3 +19,4 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/migrations/002_core_tenancy_and_ho
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/migrations/003_workos_firewall_and_pgvector.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed/seed_data.sql
 ```
+

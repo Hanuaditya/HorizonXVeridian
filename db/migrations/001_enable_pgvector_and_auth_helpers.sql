@@ -45,3 +45,4 @@ AS $$
     NULLIF(current_setting('request.jwt.claims', true)::json -> 'o' ->> 'rol', '')
   );
 $$;
+

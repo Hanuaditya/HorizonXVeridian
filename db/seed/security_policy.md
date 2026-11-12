@@ -8,3 +8,4 @@ Customer PII, meeting transcripts, confidential merge requests, and cryptographi
 
 ## SEC-POL-044: Credential Rotation & Signed Webhooks
 All service-to-service webhooks and third-party callbacks (Slack, GitHub, internal media pipeline) must validate HMAC signatures using constant-time comparison and enforce timestamp replay windows.
+
