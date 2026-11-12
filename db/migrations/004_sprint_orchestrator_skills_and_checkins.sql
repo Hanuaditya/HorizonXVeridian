@@ -10,3 +10,4 @@ ALTER TABLE public.employees
 ALTER TABLE public.tasks
     ADD COLUMN IF NOT EXISTS commit_message TEXT,
     ADD COLUMN IF NOT EXISTS progress_pct INTEGER NOT NULL DEFAULT 0;
+

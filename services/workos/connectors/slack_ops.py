@@ -431,3 +431,4 @@ def post_closure_confirmation_dms(
         kind="closure",
         metadata={"commit_summary": commit_summary, "jira_status": "Done"},
     )
+
