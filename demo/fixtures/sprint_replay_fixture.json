@@ -1,0 +1,101 @@
+{
+  "version": "1.0.0",
+  "name": "Horizon-Veridian 6-Stage Sprint Governance Replay Fixture",
+  "org_id": "org_demo_horizon",
+  "meeting_id": "fixture-sprint-replay-2026",
+  "title": "Hinglish Infrastructure & Platform Sprint Sync",
+  "participants": [
+    {
+      "clerk_user_id": "user_mgr_fixture",
+      "display_name": "Aarav Sharma",
+      "email": "aarav.sharma@example.com",
+      "role": "org:admin"
+    },
+    {
+      "clerk_user_id": "user_emp_a_fixture",
+      "display_name": "Rohan Patel",
+      "email": "rohan.patel@example.com",
+      "role": "org:member"
+    },
+    {
+      "clerk_user_id": "user_emp_b_fixture",
+      "display_name": "Priya Sen",
+      "email": "priya.sen@example.com",
+      "role": "org:member"
+    }
+  ],
+  "transcript": [
+    {
+      "speaker": "Aarav Sharma",
+      "speaker_user_id": "user_mgr_fixture",
+      "text": "Team, let's align our sprint commitments before deployment."
+    },
+    {
+      "speaker": "Rohan Patel",
+      "speaker_user_id": "user_emp_a_fixture",
+      "text": "Rohan here, I will implement Stripe webhook idempotency in the billing service."
+    },
+    {
+      "speaker": "Priya Sen",
+      "speaker_user_id": "user_emp_b_fixture",
+      "text": "Priya here, I will build the React OAuth 2.0 dashboard for the frontend."
+    },
+    {
+      "speaker": "Aarav Sharma",
+      "speaker_user_id": "user_mgr_fixture",
+      "text": "Arjun ko Elastic cluster AWS production pe deploy karna tha costing 2.5 Lakhs, but he is on paternity leave."
+    }
+  ],
+  "extracted_tasks": [
+    {
+      "task_id": "t1",
+      "title": "Implement Stripe webhook idempotency in billing service",
+      "assignee": "Rohan Patel",
+      "status": "DISPATCHED",
+      "jira_ticket_id": "SCRUM-101",
+      "jira_url": "https://veridian.atlassian.net/browse/SCRUM-101",
+      "proposed_commit_message": "feat(billing): implement stripe webhook idempotency"
+    },
+    {
+      "task_id": "t2",
+      "title": "Build React OAuth 2.0 dashboard for frontend",
+      "assignee": "Priya Sen",
+      "status": "DISPATCHED",
+      "jira_ticket_id": "SCRUM-102",
+      "jira_url": "https://veridian.atlassian.net/browse/SCRUM-102",
+      "proposed_commit_message": "feat(auth): build react oauth 2.0 dashboard"
+    },
+    {
+      "task_id": "t3",
+      "title": "Stage Elastic cluster with 14-day soak",
+      "assignee": "Arjun Rao",
+      "hr_status": "ON_PATERNITY_LEAVE",
+      "rerouted_assignee": "Rohan Patel",
+      "resolution_action": "REROUTE",
+      "status": "DISPATCHED",
+      "jira_ticket_id": "SCRUM-103",
+      "jira_url": "https://veridian.atlassian.net/browse/SCRUM-103",
+      "compliance_flags": ["BUDGET_OVERRUN", "ON_PATERNITY_LEAVE"]
+    }
+  ],
+  "manager_approval": {
+    "approver": "clerk:user_mgr_fixture",
+    "approved_at": "2026-11-13T09:35:00Z",
+    "channel": "slack:C0CHVP9J15E",
+    "status": "APPROVED"
+  },
+  "employee_status_reply": {
+    "task_id": "t2",
+    "assignee": "Priya Sen",
+    "reply_text": "OAuth 2.0 frontend dashboard completed and verified — PR https://github.com/example/repo/pull/42",
+    "completion_evidence": {
+      "type": "pr_url",
+      "value": "https://github.com/example/repo/pull/42"
+    },
+    "jira_result": {
+      "ticket_id": "SCRUM-102",
+      "status": "Done",
+      "transitioned": true
+    }
+  }
+}
