@@ -1,9 +1,12 @@
 'use client';
 
 import React, { createContext, useContext } from 'react';
+import Link from 'next/link';
 import {
   ClerkProvider,
+  CreateOrganization,
   OrganizationSwitcher,
+  SignInButton,
   SignedIn,
   UserButton,
   useAuth as useClerkAuth,
@@ -163,4 +166,105 @@ export function AppHeaderAuthControls() {
       </span>
     </div>
   );
+}
+
+export function OrgOnboardingGuard({
+  children,
+  pageName = 'Horizon Veridian WorkOS',
+}: {
+  children: React.ReactNode;
+  pageName?: string;
+}) {
+  const ctx = useAppAuth();
+
+  if (ctx.isDemo || !ctx.hasRealClerk) {
+    return <>{children}</>;
+  }
+
+  if (!ctx.isLoaded) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-dark-1 p-8 text-center text-sm text-white/70">
+        Loading Clerk authentication and organization context...
+      </div>
+    );
+  }
+
+  if (!ctx.isSignedIn) {
+    return (
+      <div className="mx-auto max-w-lg rounded-2xl border border-blue-500/30 bg-dark-1 p-8 text-center text-white shadow-xl">
+        <h2 className="text-xl font-bold">Sign in to access {pageName}</h2>
+        <p className="mt-2 text-sm text-white/65">
+          Live mode (<code className="text-sky-300">DEMO_MODE=false</code>) requires an authenticated
+          Clerk user session and organization membership.
+        </p>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <SignInButton mode="modal">
+            <button
+              type="button"
+              className="rounded-lg bg-blue-1 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-600"
+            >
+              Sign In with Clerk
+            </button>
+          </SignInButton>
+          <Link
+            href="/sign-in"
+            className="rounded-lg border border-white/15 bg-dark-2 px-5 py-2.5 text-sm font-medium text-white/80 hover:bg-dark-3"
+          >
+            Open Sign-In Page
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!ctx.orgId) {
+    return (
+      <div className="mx-auto flex max-w-2xl flex-col items-center gap-6 rounded-2xl border border-purple-500/30 bg-dark-1 p-8 text-white shadow-xl">
+        <div className="text-center">
+          <span className="rounded-full bg-purple-500/20 px-3 py-1 text-xs font-semibold text-purple-300">
+            Clerk Organization Required
+          </span>
+          <h2 className="mt-3 text-2xl font-bold">Create or Select Your Organization</h2>
+          <p className="mt-2 text-sm text-white/65">
+            {pageName} enforces strict multi-tenant RLS on Supabase using your active Clerk{' '}
+            <code className="text-sky-300">org_id</code> and <code className="text-sky-300">org:admin</code>{' '}
+            claims. Create <strong className="text-white">Horizon Veridian</strong> below or switch to
+            an existing organization.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-4">
+          <OrganizationSwitcher
+            hidePersonal
+            afterSelectOrganizationUrl="/workos"
+            afterCreateOrganizationUrl="/workos"
+            appearance={{
+              variables: { colorText: '#ffffff', colorBackground: '#252A41' },
+            }}
+          />
+        </div>
+
+        <CreateOrganization
+          afterCreateOrganizationUrl="/workos"
+          skipInvitationScreen
+          appearance={{
+            variables: {
+              colorText: '#ffffff',
+              colorPrimary: '#0E78F9',
+              colorBackground: '#1C1F2E',
+              colorInputBackground: '#252A41',
+              colorInputText: '#ffffff',
+            },
+          }}
+        />
+
+        <p className="text-center font-mono text-xs text-white/50">
+          After creating your org, seed its tenant data with:{' '}
+          <span className="text-sky-300">python scripts/seed_live_supabase.py --org-id &lt;org_id&gt;</span>
+        </p>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
 }

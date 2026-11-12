@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useAppAuth } from '@/providers/AuthBridge';
+import { OrgOnboardingGuard, useAppAuth } from '@/providers/AuthBridge';
 import { useAgentStream, useHITLResume } from '@/lib/sse';
 import type { WorkOSAuditEntry, WorkOSThreadState } from '@/lib/workos-types';
 import WorkflowHeader from '@/components/workos/WorkflowHeader';
@@ -20,6 +20,14 @@ const GOLDEN_HINGLISH_TRANSCRIPT = `[00:00 - Dov]: Team, welcome. We have three 
 [02:00 - Dov]: Theek hai, let's have the AI platform check our policies, route it to the right person, and create the tickets. Meeting adjourned!`;
 
 export default function WorkOSHubPage() {
+  return (
+    <OrgOnboardingGuard pageName="WorkOS Hub">
+      <WorkOSHubContent />
+    </OrgOnboardingGuard>
+  );
+}
+
+function WorkOSHubContent() {
   const { isManager, orgId } = useAppAuth();
   const [threadId, setThreadId] = useState<string | null>(null);
   const [recentThreads, setRecentThreads] = useState<WorkOSThreadState[]>([]);

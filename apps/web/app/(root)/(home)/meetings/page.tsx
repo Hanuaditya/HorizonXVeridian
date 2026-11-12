@@ -3,8 +3,17 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { OrgOnboardingGuard } from '@/providers/AuthBridge';
 
 export default function MeetingsHubPage() {
+  return (
+    <OrgOnboardingGuard pageName="Unified Meetings Hub">
+      <MeetingsHubContent />
+    </OrgOnboardingGuard>
+  );
+}
+
+function MeetingsHubContent() {
   const router = useRouter();
   const [videoUrl, setVideoUrl] = useState('demo://hinglish_sprint_sync.mp4');
   const [title, setTitle] = useState('Hinglish Engineering Sync');

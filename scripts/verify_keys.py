@@ -79,6 +79,8 @@ def check_evon_and_llms() -> Tuple[str, str]:
 
     if has_evon:
         notes.append("Evon key SET")
+    elif has_gemini and "HTTP 200" in " ".join(notes):
+        notes.append("EVON_API_KEY unset (using Gemini live routing)")
     else:
         notes.append("EVON_API_KEY unset (DEMO fallback)")
 
