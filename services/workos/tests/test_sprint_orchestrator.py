@@ -210,7 +210,7 @@ def test_interval_checkins_partial_digest_and_natural_language_auto_close_jira(m
     app.dependency_overrides[require_auth] = lambda: AuthContext(
         user_id="user_mgr_1",
         org_id="org_demo_horizon",
-        org_role="org:admin",
+        role="org:admin",
         is_demo=False,
     )
 
