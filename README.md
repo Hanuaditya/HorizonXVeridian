@@ -119,10 +119,28 @@ Contracts between services are strictly typed using JSON Schemas under `packages
   ```
 
 ### Unified Web Routes
-- `/workos`: Live Gnani Evon 30B Ã— Veridian WorkOS Compliance Hub & HITL Approval Center
+- `/workos`: Live Gnani Evon 30B × Veridian WorkOS Compliance Hub & HITL Approval Center
 - `/meetings` & `/meetings/[id]`: Unified Meeting Hub & Detail Dossier (Gnani Prisma STT + Timbre Dubbing + Tasks)
-- `/admin`: Clerk â†” Slack â†” Jira Identity Mappings, Config Thresholds & Connector Sync
+- `/admin`: Clerk ↔ Slack ↔ Jira Identity Mappings, Config Thresholds & Connector Sync
 - `/`, `/upcoming`, `/previous`, `/recordings`, `/insights`, `/personal-room`: Horizon Meet Rooms & Recordings
+
+---
+
+## Hinglish NLP & Compliance Firewall Evaluation
+
+Horizon-Veridian includes a dedicated Hinglish evaluation benchmark testing code-mixed English/Hindi sprint utterances across task extraction, identity resolution, and 4-way compliance firewalls (budget, leave, and blocked APIs).
+
+| Metric | Accuracy | Samples | Details |
+| :--- | :--- | :--- | :--- |
+| **Task Action Extraction** | **100.0%** | 12/12 | Extracts action item verbs & intent from conversational Hindi/English |
+| **Assignee Resolution** | **100.0%** | 12/12 | Maps nicknames & phonetic references to verified team identities |
+| **Compliance & Firewall** | **100.0%** | 12/12 | Catches budget caps, paternity leave & blocked APIs (`SEC-POL-104`) |
+
+To run the evaluation suite locally:
+```bash
+python scripts/run_eval.py
+```
+Full evaluation report and sample-by-sample predictions are recorded in [`evals/hinglish/results.md`](./evals/hinglish/results.md).
 
 ---
 

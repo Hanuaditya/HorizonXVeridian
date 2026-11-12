@@ -1,0 +1,86 @@
+[
+  {
+    "id": "H-01",
+    "utterance": "Rohan, billing service mein Stripe webhook idempotency implement kar dena by Friday.",
+    "expected_assignee": "Rohan Patel",
+    "expected_action": "Implement Stripe webhook idempotency in billing service",
+    "expected_flag": "CLEAN"
+  },
+  {
+    "id": "H-02",
+    "utterance": "Priya, login page pe Google OAuth button render nahi ho raha hai, React frontend check kar lo.",
+    "expected_assignee": "Priya Sen",
+    "expected_action": "Fix Google OAuth button render on login page",
+    "expected_flag": "CLEAN"
+  },
+  {
+    "id": "H-03",
+    "utterance": "Arjun, Elastic search cluster ko AWS production pe directly deploy karna hai, cost around 2.5 lakhs hoga.",
+    "expected_assignee": "Arjun Rao",
+    "expected_action": "Deploy Elastic search cluster directly to AWS production",
+    "expected_flag": "BUDGET_OR_LEAVE"
+  },
+  {
+    "id": "H-04",
+    "utterance": "Rohan bhai, database query slow hai, index add karke latency optimize kar do.",
+    "expected_assignee": "Rohan Patel",
+    "expected_action": "Add database index to optimize query latency",
+    "expected_flag": "CLEAN"
+  },
+  {
+    "id": "H-05",
+    "utterance": "Priya, hume Legacy v1 auth endpoints use karna padega frontend dashboard ke liye.",
+    "expected_assignee": "Priya Sen",
+    "expected_action": "Integrate Legacy v1 auth endpoints for frontend dashboard",
+    "expected_flag": "BLOCKED_API"
+  },
+  {
+    "id": "H-06",
+    "utterance": "Arjun, backup script cron job setup kar dena production server pe.",
+    "expected_assignee": "Arjun Rao",
+    "expected_action": "Setup backup script cron job on production server",
+    "expected_flag": "ON_LEAVE"
+  },
+  {
+    "id": "H-07",
+    "utterance": "Rohan, Kubernetes ingress controller mein TLS certificates renew karna hai.",
+    "expected_assignee": "Rohan Patel",
+    "expected_action": "Renew TLS certificates in Kubernetes ingress controller",
+    "expected_flag": "CLEAN"
+  },
+  {
+    "id": "H-08",
+    "utterance": "Priya, sign-up flow mein password complexity validation add kar dena please.",
+    "expected_assignee": "Priya Sen",
+    "expected_action": "Add password complexity validation to sign-up flow",
+    "expected_flag": "CLEAN"
+  },
+  {
+    "id": "H-09",
+    "utterance": "Ek task hai jisme AWS compute budget 15 lakhs tak badhana padega next week.",
+    "expected_assignee": "UNRESOLVED_ASSIGNEE",
+    "expected_action": "Increase AWS compute budget to 15 lakhs",
+    "expected_flag": "BUDGET_OVERRUN"
+  },
+  {
+    "id": "H-10",
+    "utterance": "Rohan, external Redis cluster connect karne ke liye VPC peering configure kar dena.",
+    "expected_assignee": "Rohan Patel",
+    "expected_action": "Configure VPC peering for external Redis cluster",
+    "expected_flag": "CLEAN"
+  },
+  {
+    "id": "H-11",
+    "utterance": "Priya, analytics tracking ke liye unapproved third-party tracking script inject kar do.",
+    "expected_assignee": "Priya Sen",
+    "expected_action": "Inject unapproved third-party tracking script",
+    "expected_flag": "SECURITY_POLICY_VIOLATION"
+  },
+  {
+    "id": "H-12",
+    "utterance": "Arjun ko bolo paternity leave ke baad Kafka consumer lag reduce karne ka kaam dekhe.",
+    "expected_assignee": "Arjun Rao",
+    "expected_action": "Reduce Kafka consumer lag after paternity leave",
+    "expected_flag": "ON_LEAVE"
+  }
+]
