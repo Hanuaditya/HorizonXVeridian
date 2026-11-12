@@ -30,7 +30,7 @@ for p in (str(REPO_ROOT), str(WORKOS_ROOT)):
 load_dotenv(REPO_ROOT / ".env", override=False)
 
 from db.seed.seed_cli import run_seed  # noqa: E402
-from core.store import _get_supabase, using_live_supabase  # noqa: E402
+from core.store import _get_supabase, list_employees, using_live_supabase  # noqa: E402
 
 
 def _slugify(val: str) -> str:
@@ -59,7 +59,19 @@ def ensure_org_seeded(org_id: str, org_name: str, force: bool = False) -> dict:
 
     tables = ("employees", "hr_employees", "finance_budgets", "security_policies")
     before = {tbl: _table_count(sb, tbl, org_id) for tbl in tables}
-    needs_seed = force or any(count == 0 for count in before.values())
+
+    # Check whether new sprint orchestrator seed items (SEC-POL-104 + domain_skills) exist
+    pol_res = (
+        sb.table("security_policies")
+        .select("policy_id")
+        .eq("org_id", org_id)
+        .eq("policy_id", "SEC-POL-104")
+        .execute()
+    )
+    has_pol_104 = bool(pol_res.data)
+    existing_emps = list_employees(org_id=org_id)
+    has_skills = bool(existing_emps) and all("skills:" in str(e.get("last_synced_from") or "") or e.get("domain_skills") for e in existing_emps)
+    needs_seed = force or any(count == 0 for count in before.values()) or not has_pol_104 or not has_skills
 
     action = "already_seeded"
     if needs_seed:
@@ -67,11 +79,22 @@ def ensure_org_seeded(org_id: str, org_name: str, force: bool = False) -> dict:
         action = "seeded"
 
     after = {tbl: _table_count(sb, tbl, org_id) for tbl in tables}
+    hydrated_emps = [
+        {
+            "full_name": e.get("full_name"),
+            "status": e.get("status"),
+            "domain_skills": e.get("domain_skills"),
+            "active_task_count": e.get("active_task_count"),
+        }
+        for e in list_employees(org_id=org_id)
+    ]
     return {
         "org_id": org_id,
         "action": action,
+        "sec_pol_104_present": True,
         "before": before,
         "after": after,
+        "employees_preview": hydrated_emps,
     }
 
 

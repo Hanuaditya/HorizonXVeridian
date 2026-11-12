@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import github, hitl, meeting, slack, threads
+from connectors.sprint_loop import poll_slack_and_checkins_once
 from core.config import get_settings
 from core.store import assert_embedding_dimension_match
 
@@ -23,6 +25,17 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+async def _background_sprint_loop() -> None:
+    while True:
+        try:
+            await poll_slack_and_checkins_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.debug("Background sprint poller iteration error: %s", exc)
+        await asyncio.sleep(2.5)
 
 
 @asynccontextmanager
@@ -36,7 +49,15 @@ async def lifespan(_app: FastAPI):
         settings.evon_model_name,
         dim,
     )
-    yield
+    poller_task = asyncio.create_task(_background_sprint_loop())
+    try:
+        yield
+    finally:
+        poller_task.cancel()
+        try:
+            await poller_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(

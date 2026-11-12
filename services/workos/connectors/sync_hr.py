@@ -34,6 +34,7 @@ class EmployeeRecord(BaseModel):
     ]
     leave_until: Optional[str] = None
     open_tickets: int = 0
+    domain_skills: List[str] = Field(default_factory=list)
     slack_id: Optional[str] = None
     jira_account_id: Optional[str] = None
 
@@ -53,6 +54,7 @@ def sync_hr_data(org_id: str, json_path: Optional[str] = None) -> int:
     emp_rows: List[Dict] = []
 
     for emp in employees:
+        skills = [str(s).strip().lower() for s in (emp.get("domainSkills") or emp.get("domain_skills") or []) if str(s).strip()]
         validated = EmployeeRecord(
             full_name=emp["displayName"],
             email=emp.get("workEmail"),
@@ -61,9 +63,11 @@ def sync_hr_data(org_id: str, json_path: Optional[str] = None) -> int:
             status=_normalize_hr_status(emp.get("employmentStatus", "Active")),  # type: ignore[arg-type]
             leave_until=emp.get("leaveUntil"),
             open_tickets=int(emp.get("openTickets", 0)),
+            domain_skills=skills,
             slack_id=emp.get("slackId"),
             jira_account_id=emp.get("jiraAccountId"),
         )
+        skills_tag = f" | skills:{','.join(validated.domain_skills)}" if validated.domain_skills else ""
         hr_rows.append({
             "id": str(uuid.uuid4()),
             "org_id": org_id,
@@ -73,7 +77,7 @@ def sync_hr_data(org_id: str, json_path: Optional[str] = None) -> int:
             "job_title": validated.job_title,
             "status": validated.status,
             "leave_until": validated.leave_until,
-            "last_synced_from": "BambooHR connector",
+            "last_synced_from": f"BambooHR connector{skills_tag}",
             "synced_at": now_iso,
         })
         emp_rows.append({
@@ -86,7 +90,9 @@ def sync_hr_data(org_id: str, json_path: Optional[str] = None) -> int:
             "status": validated.status,
             "active": validated.status in {"ACTIVE", "NEW_HIRE"},
             "capacity_cache": validated.open_tickets,
-            "last_synced_from": "BambooHR connector",
+            "active_task_count": validated.open_tickets,
+            "domain_skills": validated.domain_skills,
+            "last_synced_from": f"BambooHR connector{skills_tag}",
             "synced_at": now_iso,
         })
 

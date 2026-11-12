@@ -44,6 +44,9 @@ def route_capacity_or_hr(state: AgentState) -> str:
 
 
 def route_resolution(state: AgentState) -> str:
+    """Block Jira creation & employee assignment DMs until explicit Manager approval."""
+    if state.get("tasks"):
+        return "hitl_interrupt_node"
     resolutions = state.get("resolutions", [])
     for res in resolutions:
         if res.get("suggested_action") != "PROCEED":

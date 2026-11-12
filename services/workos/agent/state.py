@@ -43,15 +43,23 @@ class Task(TypedDict, total=False):
     capacity_provenance: Optional[str]
 
     rerouted_assignee: Optional[str]
+    leave_recommendation: Optional[str]
 
     resolution_action: Optional[str]
     reframed_title: Optional[str]
     reframed_description: Optional[str]
+    proposed_commit_message: Optional[str]
 
     jira_ticket_id: Optional[str]
     jira_url: Optional[str]
+    jira_status: Optional[str]
     slack_dm_sent: Optional[bool]
     dispatch_error: Optional[str]
+
+    progress_pct: Optional[int]
+    completed_milestones: Optional[str]
+    blockers: Optional[str]
+    commit_summary: Optional[str]
 
 
 def update_tasks_reducer(
@@ -92,6 +100,7 @@ class AgentState(TypedDict, total=False):
     hitl_decisions: Dict[str, str]
     approver_user_id: Optional[str]
     dispatched_tickets: List[Dict[str, Any]]
+    immediate_alerts: List[Dict[str, Any]]
     manager_approved: bool
 
     # Graph B closed-loop fields

@@ -33,12 +33,21 @@ def security_checker_node(state: AgentState) -> dict:
             org_id=org_id,
             query_embedding=embedding,
             threshold=settings.security_threshold,
-            limit=3,
+            limit=4,
         )
         if not matches:
             continue
 
+        low = search_text.lower()
+        is_api_phrase = any(
+            w in low
+            for w in ("api", "sdk", "unsupported", "blocked", "legacy v1", "third-party", "unapproved")
+        )
         top = matches[0]
+        if is_api_phrase:
+            api_match = next((m for m in matches if m.get("policy_id") == "SEC-POL-104"), None)
+            if api_match is not None:
+                top = api_match
         policy_id = str(top.get("policy_id") or "SEC-POL-089")
         chunk_text = str(top.get("chunk_text") or "")
         doc_name = str(top.get("document_name") or "security_policy.md")

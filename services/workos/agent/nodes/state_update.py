@@ -22,18 +22,26 @@ def state_update_node(state: AgentState) -> dict:
     updates: Dict[str, Task] = {}
 
     for task_id, task in tasks.items():
-        action = (
-            decisions.get(task_id)
-            or (resolutions.get(task_id) or {}).get("suggested_action")
+        suggested = (
+            (resolutions.get(task_id) or {}).get("suggested_action")
             or task.get("resolution_action")
             or "PROCEED"
         ).upper()
+        raw_decision = decisions.get(task_id)
+        if raw_decision and raw_decision.upper() == "APPROVE":
+            action = suggested
+        else:
+            action = (raw_decision or suggested).upper()
 
         if action == "DEFER":
             updates[task_id] = Task(status="DEFERRED", resolution_action="DEFER")
         elif action == "CANCEL":
             updates[task_id] = Task(status="CANCELLED", resolution_action="CANCEL")
-        elif action == "REROUTE":
+        elif action == "REROUTE" or (
+            raw_decision
+            and raw_decision.upper() == "APPROVE"
+            and task.get("rerouted_assignee")
+        ):
             new_assignee = task.get("rerouted_assignee") or task.get("assignee")
             updates[task_id] = Task(
                 status="READY",

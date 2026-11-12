@@ -13,6 +13,7 @@
       "employmentStatus": "On Paternity Leave",
       "leaveUntil": "2026-12-15",
       "openTickets": 1,
+      "domainSkills": ["elasticsearch", "aws", "ci-cd", "product"],
       "slackId": "U_ARJUN_DEMO",
       "jiraAccountId": "jira-arjun-01"
     },
@@ -26,6 +27,7 @@
       "jobTitle": "Principal Infrastructure Engineer",
       "employmentStatus": "Active",
       "openTickets": 1,
+      "domainSkills": ["elasticsearch", "aws", "backend", "infra", "kubernetes"],
       "slackId": "U_JOSH_DEMO",
       "jiraAccountId": "jira-josh-02"
     },
@@ -39,6 +41,7 @@
       "jobTitle": "Engineering Lead (New Hire)",
       "employmentStatus": "New Hire",
       "openTickets": 3,
+      "domainSkills": ["aws", "backend", "architecture"],
       "slackId": "U_DOV_DEMO",
       "jiraAccountId": "jira-dov-03"
     },
@@ -52,6 +55,7 @@
       "jobTitle": "VP Security & Architecture",
       "employmentStatus": "Active",
       "openTickets": 4,
+      "domainSkills": ["security", "compliance", "policy", "backend"],
       "slackId": "U_SCOTT_DEMO",
       "jiraAccountId": "jira-scott-04"
     },
@@ -65,6 +69,7 @@
       "jobTitle": "Finance Partner, Engineering",
       "employmentStatus": "Active",
       "openTickets": 4,
+      "domainSkills": ["finops", "billing", "aws", "cloud"],
       "slackId": "U_AMIT_DEMO",
       "jiraAccountId": "jira-amit-05"
     },
@@ -75,9 +80,10 @@
       "lastName": "Weaver",
       "workEmail": "gabe@veridian.local",
       "department": "Product Management",
-      "jobTitle": "Product Manager (New Hire)",
+      "jobTitle": "Frontend & Auth Product Lead",
       "employmentStatus": "New Hire",
-      "openTickets": 1,
+      "openTickets": 3,
+      "domainSkills": ["frontend", "react", "auth", "ui"],
       "slackId": "U_GABE_DEMO",
       "jiraAccountId": "jira-gabe-06"
     }

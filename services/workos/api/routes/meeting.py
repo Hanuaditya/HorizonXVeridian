@@ -14,11 +14,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from pydantic import BaseModel, Field
 
 from agent.graph_a import get_graph_a
-from api.auth import AuthContext, require_auth
+from api.auth import AuthContext, require_auth, require_manager
 from api.sse import sse_manager
+from connectors.slack_ops import send_manager_review_menu
 from contracts.meeting_ended import MeetingEndedPayload
 from core.config import get_settings
-from core.store import save_thread_snapshot
+from core.store import list_slack_feed, save_thread_snapshot
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -112,11 +113,24 @@ async def run_graph_a_background(thread_id: str, initial_state: Dict[str, Any]) 
         resolutions_out = (result or {}).get("resolutions", [])
         key_decisions = (result or {}).get("key_decisions", [])
         meeting_context = (result or {}).get("meeting_context", {})
+        immediate_alerts = (result or {}).get("immediate_alerts", [])
         dispatched = (result or {}).get("dispatched_tickets", [])
 
-        needs_hitl = any(r.get("suggested_action") != "PROCEED" for r in resolutions_out)
+        needs_hitl = bool(tasks_out) or any(r.get("suggested_action") != "PROCEED" for r in resolutions_out)
         phase = "HITL" if needs_hitl else "COMPLETE"
 
+        if needs_hitl:
+            await asyncio.to_thread(
+                send_manager_review_menu,
+                org_id,
+                thread_id,
+                meeting_id,
+                str(initial_state.get("title") or "Sprint Meeting"),
+                tasks_out,
+                resolutions_out,
+            )
+
+        slack_feed = list_slack_feed(org_id=org_id, thread_id=thread_id)
         save_thread_snapshot(
             thread_id=thread_id,
             org_id=org_id,
@@ -128,6 +142,8 @@ async def run_graph_a_background(thread_id: str, initial_state: Dict[str, Any]) 
                 "resolutions": resolutions_out,
                 "key_decisions": key_decisions,
                 "meeting_context": meeting_context,
+                "immediate_alerts": immediate_alerts,
+                "slack_feed": slack_feed,
                 "dispatched_tickets": dispatched,
             },
         )
@@ -141,6 +157,8 @@ async def run_graph_a_background(thread_id: str, initial_state: Dict[str, Any]) 
                 "resolutions": resolutions_out,
                 "key_decisions": key_decisions,
                 "meeting_context": meeting_context,
+                "immediate_alerts": immediate_alerts,
+                "slack_feed": slack_feed,
             },
             org_id=org_id,
         )
@@ -152,11 +170,13 @@ async def run_graph_a_background(thread_id: str, initial_state: Dict[str, Any]) 
                 {
                     "meeting_id": meeting_id,
                     "thread_id": thread_id,
-                    "message": "Compliance firewall raised flags — awaiting manager review.",
+                    "message": "Manager review menu sent to Slack — awaiting approval before creating Jira tickets.",
                     "tasks": tasks_out,
                     "resolutions": resolutions_out,
                     "key_decisions": key_decisions,
                     "meeting_context": meeting_context,
+                    "immediate_alerts": immediate_alerts,
+                    "slack_feed": slack_feed,
                 },
                 org_id=org_id,
             )
@@ -270,6 +290,49 @@ async def demo_meeting_ended(
         "meeting_context": {},
         "resolutions": [],
         "dispatched_tickets": [],
+        "manager_approved": False,
+        "turn_count": 0,
+    }
+
+    background_tasks.add_task(run_graph_a_background, thread_id, initial_state)
+    return MeetingAcceptedResponse(
+        status="accepted",
+        thread_id=thread_id,
+        meeting_id=meeting_id,
+        org_id=auth.org_id,
+    )
+
+
+@router.post(
+    "/transcript-ingest",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=MeetingAcceptedResponse,
+)
+async def ingest_live_transcript(
+    body: DemoMeetingRequest,
+    background_tasks: BackgroundTasks,
+    auth: AuthContext = Depends(require_manager),
+) -> MeetingAcceptedResponse:
+    """Manager-authenticated endpoint to ingest sprint transcripts in live or demo mode."""
+    settings = get_settings()
+    meeting_id = body.meeting_id or f"live-{uuid.uuid4().hex[:8]}"
+    thread_id = f"meeting-{meeting_id}-{uuid.uuid4().hex[:8]}"
+    sse_manager.register(thread_id, org_id=auth.org_id)
+
+    initial_state: Dict[str, Any] = {
+        "org_id": auth.org_id,
+        "meeting_id": meeting_id,
+        "thread_id": thread_id,
+        "title": body.title,
+        "transcript": body.transcript,
+        "participants": body.participants,
+        "is_demo": settings.demo_mode,
+        "tasks": {},
+        "key_decisions": [],
+        "meeting_context": {},
+        "resolutions": [],
+        "dispatched_tickets": [],
+        "immediate_alerts": [],
         "manager_approved": False,
         "turn_count": 0,
     }

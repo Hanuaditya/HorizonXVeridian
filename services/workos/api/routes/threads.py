@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from api.auth import AuthContext, require_auth, require_manager
 from api.sse import sse_manager
+from connectors.sprint_loop import process_employee_reply, trigger_checkin_for_thread
 from connectors.sync_finance import sync_finance_data
 from connectors.sync_hr import sync_hr_data
 from connectors.sync_security import sync_security_data
@@ -33,6 +34,11 @@ class EmployeeMappingUpdate(BaseModel):
     slack_id: Optional[str] = None
     jira_account_id: Optional[str] = None
     email: Optional[str] = None
+
+
+class EmployeeReplyRequest(BaseModel):
+    task_id: str
+    reply_text: str
 
 
 def _verify_thread_org_access(thread_id: str, auth_org_id: str) -> Optional[Dict[str, Any]]:
@@ -163,4 +169,34 @@ async def admin_trigger_connector_sync(
         "finance_budgets": len(fin_rows),
         "security_policies": len(sec_rows),
     }
+
+
+@router.post("/threads/{thread_id}/checkin")
+async def manual_trigger_checkin(
+    thread_id: str,
+    auth: AuthContext = Depends(require_auth),
+) -> Dict[str, Any]:
+    """Fast-forward trigger to send 1-on-1 status check-in DMs to assigned employees now."""
+    _verify_thread_org_access(thread_id, auth.org_id)
+    return await trigger_checkin_for_thread(org_id=auth.org_id, thread_id=thread_id)
+
+
+@router.post("/threads/{thread_id}/employee-reply")
+async def submit_employee_console_reply(
+    thread_id: str,
+    body: EmployeeReplyRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> Dict[str, Any]:
+    """Accept Employee Bot Console reply, sync to Slack, extract progress/completion, update Jira."""
+    _verify_thread_org_access(thread_id, auth.org_id)
+    if not body.reply_text or not body.reply_text.strip():
+        raise HTTPException(status_code=400, detail="reply_text is required.")
+    return await process_employee_reply(
+        org_id=auth.org_id,
+        thread_id=thread_id,
+        task_id=body.task_id,
+        reply_text=body.reply_text.strip(),
+        source="web_console",
+        post_to_slack=True,
+    )
 

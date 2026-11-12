@@ -61,6 +61,7 @@ class LocalDemoStore:
             self.approvals: List[Dict[str, Any]] = []
             self.audit_trail: List[Dict[str, Any]] = []
             self.slack_threads: List[Dict[str, Any]] = []
+            self.slack_feed: List[Dict[str, Any]] = []
             self.webhook_events: set[tuple[str, str]] = set()
             self.thread_states: Dict[str, Dict[str, Any]] = {}
             self._seeded = False
@@ -82,6 +83,9 @@ class LocalDemoStore:
             for emp in data.get("employees", []):
                 raw_status = emp.get("employmentStatus", "Active")
                 norm_status = _normalize_hr_status(raw_status)
+                skills = [str(s).strip().lower() for s in (emp.get("domainSkills") or emp.get("domain_skills") or []) if str(s).strip()]
+                skills_tag = f" | skills:{','.join(skills)}" if skills else ""
+                open_cnt = int(emp.get("openTickets", 0))
                 self.hr_employees.append({
                     "id": str(uuid.uuid4()),
                     "org_id": org_id,
@@ -91,7 +95,7 @@ class LocalDemoStore:
                     "job_title": emp.get("jobTitle"),
                     "status": norm_status,
                     "leave_until": emp.get("leaveUntil"),
-                    "last_synced_from": "BambooHR connector (seed)",
+                    "last_synced_from": f"BambooHR connector (seed){skills_tag}",
                     "synced_at": now_iso,
                 })
                 self.employees.append({
@@ -104,8 +108,10 @@ class LocalDemoStore:
                     "jira_account_id": emp.get("jiraAccountId"),
                     "status": norm_status,
                     "active": norm_status in {"ACTIVE", "NEW_HIRE"},
-                    "capacity_cache": int(emp.get("openTickets", 0)),
-                    "last_synced_from": "Seed / Jira capacity cache",
+                    "capacity_cache": open_cnt,
+                    "active_task_count": open_cnt,
+                    "domain_skills": skills,
+                    "last_synced_from": f"Seed / Jira capacity cache{skills_tag}",
                     "synced_at": now_iso,
                 })
 
@@ -415,6 +421,37 @@ def mark_meeting_processed(
         }
 
 
+def _load_seed_skills_map() -> Dict[str, List[str]]:
+    settings = get_settings()
+    hr_path = _REPO_ROOT / settings.hr_json_path
+    if not hr_path.exists():
+        return {}
+    try:
+        data = json.loads(hr_path.read_text(encoding="utf-8"))
+        return {
+            str(e["displayName"]).lower(): [
+                str(s).strip().lower() for s in (e.get("domainSkills") or []) if str(s).strip()
+            ]
+            for e in data.get("employees", [])
+            if e.get("displayName")
+        }
+    except Exception:
+        return {}
+
+
+def _extract_skills_from_row(row: Dict[str, Any], seed_map: Dict[str, List[str]]) -> List[str]:
+    explicit = row.get("domain_skills")
+    if isinstance(explicit, list) and explicit:
+        return [str(s).strip().lower() for s in explicit if str(s).strip()]
+    src = str(row.get("last_synced_from") or "")
+    if "skills:" in src:
+        tail = src.split("skills:", 1)[1].split("|")[0].strip()
+        parsed = [s.strip().lower() for s in tail.split(",") if s.strip()]
+        if parsed:
+            return parsed
+    return seed_map.get(str(row.get("full_name") or "").lower(), [])
+
+
 def list_employees(org_id: str) -> List[Dict[str, Any]]:
     if using_live_supabase():
         sb = _get_supabase()
@@ -424,9 +461,23 @@ def list_employees(org_id: str) -> List[Dict[str, Any]]:
             .eq("org_id", org_id)
             .execute()
         )
-        return res.data or []
-    with _local_store._lock:
-        return [dict(e) for e in _local_store.employees if e["org_id"] == org_id]
+        rows = res.data or []
+    else:
+        with _local_store._lock:
+            rows = [dict(e) for e in _local_store.employees if e["org_id"] == org_id]
+
+    seed_map = _load_seed_skills_map()
+    hydrated: List[Dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        item["domain_skills"] = _extract_skills_from_row(item, seed_map)
+        item["active_task_count"] = int(
+            item.get("active_task_count")
+            if item.get("active_task_count") is not None
+            else item.get("capacity_cache") or 0
+        )
+        hydrated.append(item)
+    return hydrated
 
 
 def upsert_employee_mapping(
@@ -501,36 +552,57 @@ def lookup_hr_employee(org_id: str, assignee_name: str) -> Optional[Dict[str, An
         return None
 
 
+def find_best_domain_replacement(
+    org_id: str,
+    task_text: str,
+    resource_type: str = "",
+    exclude_name: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Select an available ACTIVE employee matching task domain skills with the lowest active workload."""
+    employees = list_employees(org_id=org_id)
+    candidates = [e for e in employees if e.get("status") == "ACTIVE"]
+    if not candidates:
+        candidates = [e for e in employees if e.get("status") in {"ACTIVE", "NEW_HIRE"}]
+
+    filtered = [
+        e
+        for e in candidates
+        if not (exclude_name and exclude_name.lower() in str(e.get("full_name", "")).lower())
+    ]
+    if not filtered:
+        return None
+
+    blob = f"{task_text} {resource_type}".lower()
+
+    def _score(emp: Dict[str, Any]) -> tuple[int, int, str]:
+        skills = [str(s).lower() for s in (emp.get("domain_skills") or [])]
+        matched = [s for s in skills if s in blob]
+        if not matched and resource_type:
+            res_low = resource_type.lower()
+            if any(k in res_low for k in ("infra", "security", "compute", "deploy")) and any(
+                s in skills for s in ("elasticsearch", "aws", "backend", "infra", "kubernetes")
+            ):
+                matched = [s for s in skills if s in ("elasticsearch", "aws", "backend", "infra", "kubernetes")]
+        emp["matched_skills"] = matched or skills[:3]
+        workload = int(emp.get("active_task_count") or emp.get("capacity_cache") or 0)
+        return (-len(matched), workload, str(emp.get("full_name") or ""))
+
+    filtered.sort(key=_score)
+    best = dict(filtered[0])
+    best.setdefault("matched_skills", best.get("domain_skills", [])[:3])
+    return best
+
+
 def find_least_loaded_active_employee(
     org_id: str,
     exclude_name: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    if using_live_supabase():
-        sb = _get_supabase()
-        res = (
-            sb.table("employees")
-            .select("full_name, capacity_cache, last_synced_from, status")
-            .eq("org_id", org_id)
-            .eq("status", "ACTIVE")
-            .order("capacity_cache", desc=False)
-            .execute()
-        )
-        rows = res.data or []
-    else:
-        with _local_store._lock:
-            rows = sorted(
-                [
-                    dict(e)
-                    for e in _local_store.employees
-                    if e["org_id"] == org_id and e["status"] == "ACTIVE"
-                ],
-                key=lambda x: x.get("capacity_cache", 0),
-            )
-    for r in rows:
-        if exclude_name and exclude_name.lower() in r["full_name"].lower():
-            continue
-        return r
-    return None
+    return find_best_domain_replacement(
+        org_id=org_id,
+        task_text="",
+        resource_type="",
+        exclude_name=exclude_name,
+    )
 
 
 def query_finance_budgets_semantic(
@@ -933,12 +1005,74 @@ def update_task_status_by_id(org_id: str, task_id: str, status: str, jira_key: O
 
 def save_thread_snapshot(thread_id: str, org_id: str, snapshot: Dict[str, Any]) -> None:
     with _local_store._lock:
-        _local_store.thread_states[thread_id] = {
-            **snapshot,
-            "thread_id": thread_id,
-            "org_id": org_id,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
+        existing = dict(_local_store.thread_states.get(thread_id) or {})
+        existing.update(snapshot)
+        existing["thread_id"] = thread_id
+        existing["org_id"] = org_id
+        existing["updated_at"] = datetime.now(timezone.utc).isoformat()
+        existing.setdefault("slack_feed", [])
+        _local_store.thread_states[thread_id] = existing
+
+
+def record_slack_feed_message(
+    org_id: str,
+    thread_id: str,
+    role: str,
+    sender: str,
+    recipient: str,
+    text: str,
+    slack_channel: str = "",
+    slack_ts: str = "",
+    task_id: Optional[str] = None,
+    jira_key: Optional[str] = None,
+    kind: str = "message",
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    msg = {
+        "id": str(uuid.uuid4()),
+        "org_id": org_id,
+        "thread_id": thread_id,
+        "role": role,
+        "sender": sender,
+        "recipient": recipient,
+        "text": text,
+        "slack_channel": slack_channel,
+        "slack_ts": slack_ts,
+        "task_id": task_id,
+        "jira_key": jira_key,
+        "kind": kind,
+        "metadata": metadata or {},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with _local_store._lock:
+        _local_store.slack_feed.append(msg)
+        snap = _local_store.thread_states.setdefault(
+            thread_id,
+            {"thread_id": thread_id, "org_id": org_id, "phase": "INGESTING", "tasks": {}},
+        )
+        feed = list(snap.get("slack_feed") or [])
+        feed.append(msg)
+        snap["slack_feed"] = feed
+        snap["updated_at"] = msg["created_at"]
+    return msg
+
+
+def list_slack_feed(org_id: str, thread_id: str) -> List[Dict[str, Any]]:
+    with _local_store._lock:
+        return [
+            dict(m)
+            for m in _local_store.slack_feed
+            if m.get("org_id") == org_id and m.get("thread_id") == thread_id
+        ]
+
+
+def list_open_slack_threads_all() -> List[Dict[str, Any]]:
+    with _local_store._lock:
+        return [
+            dict(r)
+            for r in _local_store.slack_threads
+            if r.get("status") not in {"DONE", "CLOSED"}
+        ]
 
 
 def get_thread_snapshot(thread_id: str) -> Optional[Dict[str, Any]]:
@@ -965,7 +1099,16 @@ def upsert_hr_records(org_id: str, hr_rows: List[Dict[str, Any]], emp_rows: List
         if hr_rows:
             sb.table("hr_employees").insert(hr_rows).execute()
         for emp in emp_rows:
-            sb.table("employees").upsert(emp, on_conflict="org_id,full_name").execute()
+            try:
+                sb.table("employees").upsert(emp, on_conflict="org_id,full_name").execute()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 400:
+                    fallback_emp = {
+                        k: v for k, v in emp.items() if k not in {"domain_skills", "active_task_count"}
+                    }
+                    sb.table("employees").upsert(fallback_emp, on_conflict="org_id,full_name").execute()
+                else:
+                    raise
         return len(hr_rows)
     with _local_store._lock:
         _local_store.hr_employees = [r for r in _local_store.hr_employees if r["org_id"] != org_id] + hr_rows

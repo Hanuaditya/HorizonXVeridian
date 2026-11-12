@@ -6,7 +6,7 @@ import logging
 from typing import Dict
 
 from agent.state import AgentState, Task
-from core.store import find_least_loaded_active_employee
+from core.store import find_best_domain_replacement
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ NON_ACTIVE_STATUSES = {
 
 
 def auto_router_node(state: AgentState) -> dict:
-    """Assign least-loaded ACTIVE employee for tasks with capacity or leave flags."""
+    """Suggest best domain-matched ACTIVE employee with lowest workload (suggest-only until Manager approves)."""
     org_id = state.get("org_id") or "org_demo_horizon"
     tasks = state.get("tasks", {})
     updates: Dict[str, Task] = {}
@@ -35,20 +35,34 @@ def auto_router_node(state: AgentState) -> dict:
             continue
 
         current_assignee = task.get("assignee", "UNASSIGNED")
-        best = find_least_loaded_active_employee(org_id=org_id, exclude_name=current_assignee)
+        task_text = f"{task.get('title', '')} {task.get('transcript_quote', '')}"
+        best = find_best_domain_replacement(
+            org_id=org_id,
+            task_text=task_text,
+            resource_type=str(task.get("resource_type") or ""),
+            exclude_name=current_assignee,
+        )
         if not best:
             continue
 
         new_assignee = best["full_name"]
-        load = int(best.get("capacity_cache", 0))
+        load = int(best.get("active_task_count") or best.get("capacity_cache") or 0)
+        matched_skills = best.get("matched_skills") or best.get("domain_skills") or []
+        skills_str = ", ".join(matched_skills) if matched_skills else "general engineering"
+        leave_rec = (
+            f"{current_assignee} is currently on leave. Suggested replacement: {new_assignee} "
+            f"(Domain match: {skills_str}, Lowest workload: {load} active tasks). "
+            "Review and click Approve to redirect and create their Jira ticket."
+        )
         updates[task_id] = Task(
             rerouted_assignee=new_assignee,
+            leave_recommendation=leave_rec,
             capacity_provenance=(
-                f"Auto-router · '{current_assignee}' unavailable/overloaded -> "
-                f"'{new_assignee}' ({load} open tickets)"
+                f"Smart Redirect · '{current_assignee}' unavailable -> "
+                f"'{new_assignee}' (skills: {skills_str}; {load} active tasks)"
             ),
         )
-        logger.info("auto_router_node: task='%s' rerouted '%s' -> '%s'", task_id, current_assignee, new_assignee)
+        logger.info("auto_router_node: task='%s' suggested '%s' -> '%s'", task_id, current_assignee, new_assignee)
 
     return {"tasks": updates}
 

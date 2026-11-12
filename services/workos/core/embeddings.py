@@ -37,6 +37,13 @@ _CONCEPT_EXPANSIONS: Dict[str, List[str]] = {
     "cost": ["budget", "compute", "expense", "lakhs", "enterprise", "finance"],
     "lakhs": ["budget", "cost", "compute", "enterprise", "inr"],
     "aws": ["cloud", "compute", "infra", "production", "cluster"],
+    "api": ["apis", "blocked", "unsupported", "deprecated", "third", "party", "legacy", "sdk", "unapproved"],
+    "apis": ["api", "blocked", "unsupported", "deprecated", "third", "party", "legacy", "sdk"],
+    "blocked": ["unsupported", "api", "apis", "deprecated", "prohibited", "unapproved", "third"],
+    "unsupported": ["blocked", "api", "apis", "deprecated", "unapproved", "legacy", "prohibited"],
+    "legacy": ["deprecated", "unsupported", "blocked", "api", "v1", "payment"],
+    "sdk": ["api", "apis", "third", "party", "unapproved", "unsupported", "blocked"],
+    "deprecated": ["blocked", "unsupported", "legacy", "api", "prohibited"],
 }
 
 

@@ -58,6 +58,7 @@ class WorkOSSettings:
     commit_match_margin: float
     capacity_limit: int
     capacity_new_hire_limit: int
+    checkin_interval_seconds: int
 
     # External integrations (strict webhook secrets)
     jira_base_url: str
@@ -128,6 +129,7 @@ def get_settings() -> WorkOSSettings:
         commit_match_margin=float(os.getenv("COMMIT_MATCH_MARGIN", "0.15")),
         capacity_limit=int(os.getenv("CAPACITY_LIMIT", "10")),
         capacity_new_hire_limit=int(os.getenv("CAPACITY_NEW_HIRE_LIMIT", "2")),
+        checkin_interval_seconds=int(os.getenv("CHECKIN_INTERVAL_SECONDS", "60")),
         jira_base_url=os.getenv("JIRA_BASE_URL", "").strip(),
         jira_email=os.getenv("JIRA_EMAIL", "").strip(),
         jira_api_token=os.getenv("JIRA_API_TOKEN", "").strip(),

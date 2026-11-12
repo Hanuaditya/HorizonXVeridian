@@ -7,14 +7,20 @@ import hmac
 import json
 import logging
 import time
+import urllib.parse
 from typing import Any, Dict
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
 
 from agent.graph_b import graph_b_slack
 from api.sse import sse_manager
+from connectors.sprint_loop import (
+    build_default_hitl_decisions,
+    process_employee_reply,
+    resume_graph_a_and_sync,
+)
 from core.config import get_settings
-from core.store import get_slack_thread, record_webhook_event_once
+from core.store import get_slack_thread, get_thread_snapshot, record_approval, record_webhook_event_once
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -126,17 +132,94 @@ async def slack_webhook(
     task_id = (existing_thread or {}).get("task_id") or str(event.get("task_id") or "unknown")
     assignee = (existing_thread or {}).get("assignee") or str(event.get("user") or "assignee")
     prev_turns = int((existing_thread or {}).get("turn_count") or 0)
+    reply_text = str(event.get("text") or "").strip()
 
-    background_tasks.add_task(
-        _run_slack_graph_b,
-        org_id,
-        graph_thread_id,
-        task_id,
-        assignee,
-        channel,
-        thread_ts,
-        str(event.get("text") or ""),
-        prev_turns,
-    )
+    if task_id == "__MANAGER_REVIEW__" and reply_text.lower() in {"approve", "approved", "lgtm", "yes", "approve all"}:
+        snap = get_thread_snapshot(graph_thread_id)
+        if snap and snap.get("phase") == "HITL":
+            decisions = build_default_hitl_decisions(snap)
+            approver = f"slack:{event.get('user') or 'manager'}"
+            record_approval(org_id, graph_thread_id, snap.get("meeting_id") or graph_thread_id, decisions, approver)
+            sse_manager.register(graph_thread_id, org_id=org_id)
+            background_tasks.add_task(resume_graph_a_and_sync, graph_thread_id, org_id, approver, decisions)
+            return Response(content=json.dumps({"status": "approved_via_slack"}), media_type="application/json", status_code=200)
+
+    if get_thread_snapshot(graph_thread_id) and task_id not in {"unknown", "__MANAGER_REVIEW__"}:
+        background_tasks.add_task(
+            process_employee_reply,
+            org_id,
+            graph_thread_id,
+            task_id,
+            reply_text,
+            "slack",
+            False,
+            channel,
+            thread_ts,
+        )
+    else:
+        background_tasks.add_task(
+            _run_slack_graph_b,
+            org_id,
+            graph_thread_id,
+            task_id,
+            assignee,
+            channel,
+            thread_ts,
+            reply_text,
+            prev_turns,
+        )
     return Response(content=json.dumps({"status": "accepted"}), media_type="application/json", status_code=200)
+
+
+@router.post("/slack/interactivity")
+async def slack_interactivity(
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> Response:
+    """Handle Slack Block Kit interactive actions (Approve & Create Tickets)."""
+    raw_body = await request.body()
+    ts = request.headers.get("X-Slack-Request-Timestamp", "")
+    sig = request.headers.get("X-Slack-Signature", "")
+
+    if not verify_slack_signature(raw_body, ts, sig):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid or missing Slack signing secret / signature.",
+        )
+
+    body_text = raw_body.decode("utf-8", errors="replace")
+    content_type = (request.headers.get("content-type") or "").lower()
+    if "application/x-www-form-urlencoded" in content_type or body_text.startswith("payload="):
+        form = urllib.parse.parse_qs(body_text)
+        raw_payload = (form.get("payload") or ["{}"])[0]
+        payload = json.loads(raw_payload)
+    else:
+        payload = json.loads(body_text or "{}")
+
+    actions = payload.get("actions") or []
+    user_info = payload.get("user") or {}
+    approver = f"slack:{user_info.get('username') or user_info.get('id') or 'manager'}"
+
+    for action in actions:
+        if action.get("action_id") == "approve_sprint_tickets":
+            thread_id = str(action.get("value") or "").strip()
+            snap = get_thread_snapshot(thread_id)
+            if not snap:
+                raise HTTPException(status_code=404, detail=f"Thread '{thread_id}' not found.")
+            org_id = str(snap.get("org_id") or "org_demo_horizon")
+            if snap.get("phase") == "HITL":
+                decisions = build_default_hitl_decisions(snap)
+                record_approval(org_id, thread_id, snap.get("meeting_id") or thread_id, decisions, approver)
+                sse_manager.register(thread_id, org_id=org_id)
+                background_tasks.add_task(resume_graph_a_and_sync, thread_id, org_id, approver, decisions)
+            return Response(
+                content=json.dumps({
+                    "response_type": "ephemeral",
+                    "text": f"Approved sprint tickets for thread `{thread_id}` — creating Jira tickets and notifying employees now.",
+                }),
+                media_type="application/json",
+                status_code=200,
+            )
+
+    return Response(content=json.dumps({"status": "ignored"}), media_type="application/json", status_code=200)
 

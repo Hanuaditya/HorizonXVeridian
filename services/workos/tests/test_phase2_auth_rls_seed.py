@@ -230,7 +230,7 @@ def test_org_a_cannot_read_org_b_and_seed_loads():
     res_a = run_seed(org_id="org_alpha")
     assert res_a["hr_employees"] == 6
     assert res_a["finance_budgets"] == 4
-    assert res_a["security_policies"] == 3
+    assert res_a["security_policies"] == 4
 
     # Write org_beta secret policy/audit that org_alpha must never see
     write_audit_trail(

@@ -6,13 +6,14 @@ import logging
 from typing import List
 
 from agent.state import AgentState
+from connectors.slack_ops import send_immediate_compliance_alert
 from core.store import upsert_tasks, write_audit_trail
 
 logger = logging.getLogger(__name__)
 
 
 def merge_node(state: AgentState) -> dict:
-    """Persist merged parallel firewall results to tasks & audit_trail."""
+    """Persist merged parallel firewall results, send immediate Manager alerts, and log audit trail."""
     org_id = state.get("org_id") or "org_demo_horizon"
     meeting_id = state.get("meeting_id", "unknown")
     thread_id = state.get("thread_id", meeting_id)
@@ -35,6 +36,23 @@ def merge_node(state: AgentState) -> dict:
             flagged_lines.append(f"{task_id}:{','.join(flags)}")
 
     upsert_tasks(org_id=org_id, meeting_id=meeting_id, thread_id=thread_id, tasks=tasks)
+    alerts = send_immediate_compliance_alert(
+        org_id=org_id,
+        thread_id=thread_id,
+        meeting_id=meeting_id,
+        tasks=tasks,
+    )
+    if alerts:
+        write_audit_trail(
+            org_id=org_id,
+            meeting_id=meeting_id,
+            thread_id=thread_id,
+            event_type="IMMEDIATE_COMPLIANCE_ALERT",
+            agent_node="merge_node",
+            detail=f"Sent immediate Manager Slack DM for {len(alerts)} compliance alert(s).",
+            provenance_tag="Budget / Policy / Blocked-API Firewall",
+        )
+
     write_audit_trail(
         org_id=org_id,
         meeting_id=meeting_id,
@@ -44,5 +62,5 @@ def merge_node(state: AgentState) -> dict:
         detail=f"{len(tasks)} tasks checked · {len(flagged_lines)} flagged ({'; '.join(flagged_lines)})",
         provenance_tag="LangGraph parallel firewall fan-in",
     )
-    return {}
+    return {"immediate_alerts": alerts}
 
