@@ -46,7 +46,7 @@ def _step_1_2_gnani_voice_roundtrip() -> str:
     from pipeline.gnani_client import GnaniVoiceEngine
 
     hinglish_sentence = (
-        "Alex, staging deploy kar do by Friday, production mat bhejna. Jason leave par hai."
+        "Alex, staging deploy kar do by Friday, production mat bhejna. Arjun leave par hai."
     )
     engine = GnaniVoiceEngine()
 

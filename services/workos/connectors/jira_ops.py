@@ -107,10 +107,20 @@ def create_jira_issue(
         resolved_acc_id = lookup_jira_account_id(assignee_email, org_id=org_id)
     if not resolved_acc_id and assignee:
         known_emails = {
-            "catchme if": "rohan.patel@example.com",
-            "resigo": "priya.sen@example.com",
-            "hanu aditya": "aarav.sharma@example.com",
+            "rohan patel": "rohan.patel@example.com",
+            "priya sen": "priya.sen@example.com",
+            "aarav sharma": "aarav.sharma@example.com",
+            "arjun rao": "arjun.rao@example.com",
         }
+        try:
+            from connectors.slack_ops import _LOCAL_TEAM
+            for m in _LOCAL_TEAM:
+                fn = str(m.get("full_name") or m.get("name") or "").lower()
+                em = str(m.get("email") or "")
+                if fn and em:
+                    known_emails[fn] = em
+        except Exception:
+            pass
         cand_email = known_emails.get(assignee.lower())
         if cand_email:
             resolved_acc_id = lookup_jira_account_id(cand_email, org_id=org_id)

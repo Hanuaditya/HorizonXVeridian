@@ -22,7 +22,7 @@ const DEMO_DETAIL: StoredMeetingDetail = {
   language: 'hi-en',
   dubbed_url: 'demo://cloudinary/dubbed/demo-hinglish.mp4',
   summary:
-    'Hinglish engineering sync covering Elastic cluster AWS production rollout, Jason paternity leave handover to Josh Lambert, SEC-POL-089 14-day staging compliance rule, and Rs 2.5 Lakhs Q4 compute budget shortfall.',
+    'Hinglish engineering sync covering Elastic cluster AWS production rollout, Arjun paternity leave handover to Josh Lambert, SEC-POL-089 14-day staging compliance rule, and Rs 2.5 Lakhs Q4 compute budget shortfall.',
   chapters: [
     { time: '00:00', title: 'Agenda & Elastic Search rollout assignment' },
     { time: '00:30', title: 'HR leave alert: Arjun Rao on paternity leave' },
@@ -30,8 +30,8 @@ const DEMO_DETAIL: StoredMeetingDetail = {
     { time: '01:25', title: 'Finance alert: Compute infra budget Rs 0 remaining' },
   ],
   segments: [
-    { speaker: 'SPEAKER_01', speaker_user_id: 'user_demo_dov', start: 12.5, end: 28.0, text: 'First, Jason, please deploy the Elastic search cluster directly to production by Thursday.' },
-    { speaker: 'SPEAKER_02', speaker_user_id: 'user_demo_amit', start: 28.5, end: 42.0, text: 'Par Dov bhai, Jason toh agle Monday tak paternity leave pe hai!' },
+    { speaker: 'SPEAKER_01', speaker_user_id: 'user_demo_dov', start: 12.5, end: 28.0, text: 'First, Arjun, please deploy the Elastic search cluster directly to production by Thursday.' },
+    { speaker: 'SPEAKER_02', speaker_user_id: 'user_demo_amit', start: 28.5, end: 42.0, text: 'Par Dov bhai, Arjun toh agle Monday tak paternity leave pe hai!' },
     { speaker: 'SPEAKER_01', speaker_user_id: 'user_demo_dov', start: 42.5, end: 62.0, text: 'Oh right. Josh, can you take that over and deploy it directly to AWS production?' },
     { speaker: 'SPEAKER_03', speaker_user_id: 'user_demo_scott', start: 62.5, end: 82.0, text: 'Wait, our staging policy says any major database upgrade needs at least 14 days bake time in staging first.' },
     { speaker: 'SPEAKER_02', speaker_user_id: 'user_demo_amit', start: 98.5, end: 116.0, text: 'Hamara compute budget for this quarter is already 0.' },

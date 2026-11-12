@@ -11,3 +11,8 @@ temp/
 .dead_letters/
 *.db
 .pytest_cache/
+local.identities.json
+local.*.json
+*.egg-info/
+dist/
+build/

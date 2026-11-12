@@ -121,7 +121,7 @@ def test_immediate_alerts_for_budget_policy_and_blocked_api_and_smart_leave_redi
     monkeypatch.setenv("DEMO_MODE", "true")
     get_local_store().reset(seed_default_org=True)
 
-    # Ensure demo_extract returns 2 tasks: Jason (on leave, Elastic prod deploy, over budget) + Gabe (Legacy v1 blocked API)
+    # Ensure demo_extract returns 2 tasks: Arjun (on leave, Elastic prod deploy, over budget) + Gabe (Legacy v1 blocked API)
     import agent.nodes.extractor as ext_mod
     from agent.nodes.extractor import ExtractionOutput, MeetingContext, TaskExtraction
 
@@ -135,7 +135,7 @@ def test_immediate_alerts_for_budget_policy_and_blocked_api_and_smart_leave_redi
                         title="Deploy Elastic search cluster directly to AWS production costing Rs 2.5 Lakhs",
                         assignee="Arjun Rao",
                         resource_type="compute",
-                        transcript_quote="Jason deploy Elastic cluster to AWS production costing Rs 2.5 Lakhs",
+                        transcript_quote="Arjun deploy Elastic cluster to AWS production costing Rs 2.5 Lakhs",
                         proposed_commit_message="feat(infra): stage Elastic cluster with 14-day soak",
                     ),
                     TaskExtraction(

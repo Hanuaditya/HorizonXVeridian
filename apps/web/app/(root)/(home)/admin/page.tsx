@@ -17,7 +17,7 @@ interface WorkOSConfigView {
 
 const VERIFIED_TEAM_PRESETS = [
   {
-    name: 'Hanu Aditya',
+    name: 'Aarav Sharma',
     email: 'aarav.sharma@example.com',
     clerk_id: 'user_clerk_manager_demo',
     slack_id: 'U_MGR_DEMO',
@@ -28,7 +28,7 @@ const VERIFIED_TEAM_PRESETS = [
     status: 'ACTIVE',
   },
   {
-    name: 'catchme if',
+    name: 'Rohan Patel',
     email: 'rohan.patel@example.com',
     clerk_id: 'user_clerk_emp_a_demo',
     slack_id: 'U_EMP_A_DEMO',
@@ -39,7 +39,7 @@ const VERIFIED_TEAM_PRESETS = [
     status: 'ACTIVE',
   },
   {
-    name: 'Resigo',
+    name: 'Priya Sen',
     email: 'priya.sen@example.com',
     clerk_id: 'user_clerk_emp_b_demo',
     slack_id: 'U_EMP_B_DEMO',
@@ -374,7 +374,7 @@ export default function AdminMappingsPage() {
                 <label className="text-[10px] text-white/60">Email</label>
                 <input
                   type="email"
-                  placeholder="e.g. rohan.patel@example.com"
+                  placeholder="e.g. employee@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="mt-0.5 w-full rounded border border-white/15 bg-dark-2 px-3 py-2 text-white"

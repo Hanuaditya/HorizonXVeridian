@@ -13,21 +13,21 @@ import ManagerCommandPane from '@/components/workos/ManagerCommandPane';
 import EmployeeBotPane from '@/components/workos/EmployeeBotPane';
 
 const GOLDEN_HINGLISH_TRANSCRIPT = `[00:00 - Dov]: Team, welcome. We have three main items today.
-[00:15 - Dov]: First, Jason, please deploy the Elastic search cluster directly to production by Thursday.
-[00:30 - Amit]: Par Dov bhai, Jason toh agle Monday tak paternity leave pe hai!
+[00:15 - Dov]: First, Arjun, please deploy the Elastic search cluster directly to production by Thursday.
+[00:30 - Amit]: Par Dov bhai, Arjun toh agle Monday tak paternity leave pe hai!
 [00:45 - Dov]: Oh right. Josh, can you take that over and deploy it directly to AWS production?
 [01:05 - Scott]: Wait, our staging policy says any major database upgrade needs at least 14 days bake time in staging first. We cannot skip to prod.
 [01:25 - Scott]: Also, Dov, that enterprise cluster instance will cost around Rs 2.5 Lakhs a month.
 [01:40 - Amit]: Let me check finance... Hamara compute budget for this quarter is already 0. We need approval before provisioning enterprise tier.
 [02:00 - Dov]: Theek hai, let's have the AI platform check our policies, route it to the right person, and create the tickets. Meeting adjourned!`;
 
-const FULL_SPRINT_DEMO_TRANSCRIPT = `[00:00 - Hanu Aditya]: Team, let's review our sprint commitments for catchme if and Resigo.
-[00:12 - Hanu Aditya]: First, Arjun Rao, please deploy the Elastic search cluster directly to AWS production by Friday.
-[00:25 - catchme if]: Jason is currently on paternity leave! Also that AWS enterprise Elasticsearch cluster will cost Rs 2.5 Lakhs a month while our compute budget remaining is 0 INR.
-[00:42 - Resigo]: Furthermore, SEC-POL-089 prohibits deploying directly to AWS production without a 14-day staging bake period.
-[00:58 - Hanu Aditya]: Got it. Second task: Resigo, please integrate the unsupported Legacy v1 Payment API directly into our React auth checkout flow by Thursday.
-[01:15 - catchme if]: Flagging that — SEC-POL-104 explicitly blocks integrating unsupported or unapproved third-party APIs into production without security sign-off.
-[01:30 - Hanu Aditya]: Understood. Veridian Bot, send me immediate compliance alerts, suggest an available domain expert with the lowest workload to replace Jason, and send me the review menu. Do not create any Jira tickets until I approve.`;
+const FULL_SPRINT_DEMO_TRANSCRIPT = `[00:00 - Aarav Sharma]: Team, let's review our sprint commitments for Rohan Patel and Priya Sen.
+[00:12 - Aarav Sharma]: First, Arjun Rao, please deploy the Elastic search cluster directly to AWS production by Friday.
+[00:25 - Rohan Patel]: Arjun is currently on paternity leave! Also that AWS enterprise Elasticsearch cluster will cost Rs 2.5 Lakhs a month while our compute budget remaining is 0 INR.
+[00:42 - Priya Sen]: Furthermore, SEC-POL-089 prohibits deploying directly to AWS production without a 14-day staging bake period.
+[00:58 - Aarav Sharma]: Got it. Second task: Priya Sen, please integrate the unsupported Legacy v1 Payment API directly into our React auth checkout flow by Thursday.
+[01:15 - Rohan Patel]: Flagging that — SEC-POL-104 explicitly blocks integrating unsupported or unapproved third-party APIs into production without security sign-off.
+[01:30 - Aarav Sharma]: Understood. Veridian Bot, send me immediate compliance alerts, suggest an available domain expert with the lowest workload to replace Arjun, and send me the review menu. Do not create any Jira tickets until I approve.`;
 
 export default function WorkOSHubPage() {
   return (

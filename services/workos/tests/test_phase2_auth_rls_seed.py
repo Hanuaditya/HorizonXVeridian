@@ -243,8 +243,8 @@ def test_org_a_cannot_read_org_b_and_seed_loads():
 
     assert len(list_employees("org_alpha")) == 6
     assert len(list_employees("org_beta")) == 0
-    assert lookup_hr_employee("org_alpha", "Jason")["status"] == "ON_PATERNITY_LEAVE"
-    assert lookup_hr_employee("org_beta", "Jason") is None
+    assert lookup_hr_employee("org_alpha", "Arjun")["status"] == "ON_PATERNITY_LEAVE"
+    assert lookup_hr_employee("org_beta", "Arjun") is None
 
     assert len(list_audit_trail("org_alpha")) == 0
     assert len(list_audit_trail("org_beta")) == 1

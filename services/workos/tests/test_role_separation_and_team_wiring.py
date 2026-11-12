@@ -119,14 +119,14 @@ def test_jira_email_to_account_id_lookup(monkeypatch):
 
     # 1. Lookup accountId directly
     acc_id = lookup_jira_account_id("rohan.patel@example.com")
-    assert acc_id == "acc_ifcatchme34"
+    assert acc_id == "acc_rohan.patel"
     assert any("/rest/api/3/user/search" in r[1] for r in captured_requests)
 
-    # 2. Create Jira issue for catchme if -> payload must contain fields.assignee = {"accountId": ...}
+    # 2. Create Jira issue for Rohan Patel -> payload must contain fields.assignee = {"accountId": ...}
     res = create_jira_issue(
         title="Deploy Elastic cluster",
         description="Task extracted from meeting",
-        assignee="catchme if",
+        assignee="Rohan Patel",
         task_id="t1",
         commit_message="feat(infra): deploy elastic",
         assignee_email="rohan.patel@example.com",
@@ -134,7 +134,7 @@ def test_jira_email_to_account_id_lookup(monkeypatch):
     assert res["ticket_id"] == "SCRUM-501"
     post_call = next(r for r in captured_requests if r[0] == "POST")
     posted_payload = post_call[2]
-    assert posted_payload["fields"]["assignee"] == {"accountId": "acc_ifcatchme34"}
+    assert posted_payload["fields"]["assignee"] == {"accountId": "acc_rohan.patel"}
 
 
 def test_individual_slack_dm_routing(monkeypatch):
@@ -143,10 +143,10 @@ def test_individual_slack_dm_routing(monkeypatch):
 
     # 1. Verify user ID resolver maps to exact Slack IDs
     assert resolve_slack_user_id("Manager", role="manager") == MANAGER_SLACK_USER_ID
-    assert resolve_slack_user_id("Hanu Aditya", role="manager") == MANAGER_SLACK_USER_ID
-    assert resolve_slack_user_id("catchme if", role="employee") == EMPLOYEE_A_SLACK_USER_ID
+    assert resolve_slack_user_id("Aarav Sharma", role="manager") == MANAGER_SLACK_USER_ID
+    assert resolve_slack_user_id("Rohan Patel", role="employee") == EMPLOYEE_A_SLACK_USER_ID
     assert resolve_slack_user_id("rohan.patel@example.com", role="employee") == EMPLOYEE_A_SLACK_USER_ID
-    assert resolve_slack_user_id("Resigo", role="employee") == EMPLOYEE_B_SLACK_USER_ID
+    assert resolve_slack_user_id("Priya Sen", role="employee") == EMPLOYEE_B_SLACK_USER_ID
     assert resolve_slack_user_id("priya.sen@example.com", role="employee") == EMPLOYEE_B_SLACK_USER_ID
 
     # 2. In live mode with mock WebClient, verify conversations_open is called per user
@@ -179,7 +179,7 @@ def test_individual_slack_dm_routing(monkeypatch):
         org_id="org_demo_horizon",
         thread_id="thr-slack-test",
         task_id="t1",
-        assignee="catchme if",
+        assignee="Rohan Patel",
         jira_key="SCRUM-10",
         jira_url="https://demo.atlassian.net/browse/SCRUM-10",
         task_title="Backend deployment",
@@ -194,7 +194,7 @@ def test_individual_slack_dm_routing(monkeypatch):
         org_id="org_demo_horizon",
         thread_id="thr-slack-test",
         task_id="t2",
-        assignee="Resigo",
+        assignee="Priya Sen",
         jira_key="SCRUM-11",
         jira_url="https://demo.atlassian.net/browse/SCRUM-11",
         task_title="Frontend auth checkout",
@@ -206,10 +206,10 @@ def test_individual_slack_dm_routing(monkeypatch):
 
 
 def test_smart_leave_redirection_recommends_catchme_if():
-    """Verify Smart Leave Redirection recommends 'catchme if' when Jason is on leave."""
+    """Verify Smart Leave Redirection recommends available backend expert when Arjun is on leave."""
     upsert_employee_mapping(
         org_id="org_demo_horizon",
-        full_name="catchme if",
+        full_name="Rohan Patel",
         clerk_user_id="user_clerk_emp_a_demo",
         slack_id="U_EMP_A_DEMO",
         email="rohan.patel@example.com",
@@ -224,7 +224,7 @@ def test_smart_leave_redirection_recommends_catchme_if():
     )
     upsert_employee_mapping(
         org_id="org_demo_horizon",
-        full_name="Resigo",
+        full_name="Priya Sen",
         clerk_user_id="user_clerk_emp_b_demo",
         slack_id="U_EMP_B_DEMO",
         email="priya.sen@example.com",
@@ -240,5 +240,5 @@ def test_smart_leave_redirection_recommends_catchme_if():
         exclude_name="Arjun Rao",
     )
     assert replacement is not None
-    assert replacement["full_name"] == "catchme if"
+    assert replacement["full_name"] == "Rohan Patel"
     assert "elasticsearch" in replacement.get("matched_skills", []) or "aws" in replacement.get("matched_skills", [])

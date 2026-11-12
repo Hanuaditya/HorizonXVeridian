@@ -219,7 +219,7 @@ def demo_extract_from_transcript(transcript_text: str) -> Dict[str, Any]:
     """Deterministic Hinglish + Veridian Golden Transcript extractor used in DEMO_MODE."""
     low = (transcript_text or "").lower()
     is_hinglish_sprint_demo = (
-        ("elastic" in low and "jason" in low)
+        ("elastic" in low and ("arjun" in low or "jason" in low))
         or ("paternity" in low and ("2.5" in low or "lakhs" in low or "staging" in low))
     )
 
@@ -227,7 +227,7 @@ def demo_extract_from_transcript(transcript_text: str) -> Dict[str, Any]:
         return {
             "meeting_context": {
                 "speaker_resolution_scratchpad": (
-                    "Dov assigns Elastic production deployment to Jason; Amit flags Jason on paternity leave; "
+                    "Dov assigns Elastic production deployment to Arjun; Amit flags Arjun on paternity leave; "
                     "Dov asks Josh to take over direct AWS prod deployment; Scott cites 14-day staging policy "
                     "(SEC-POL-089) and Rs 2.5L/mo cost; Amit reports Q4 compute budget is 0."
                 ),
@@ -243,10 +243,10 @@ def demo_extract_from_transcript(transcript_text: str) -> Dict[str, Any]:
             "tasks": [
                 {
                     "task_id": "t1",
-                    "title": "Hand over Elastic Search deployment ownership from Jason",
-                    "assignee": "Jason",
+                    "title": "Hand over Elastic Search deployment ownership from Arjun",
+                    "assignee": "Arjun",
                     "resource_type": "hr_action",
-                    "transcript_quote": "First, Jason, please deploy the Elastic search cluster directly to production by Thursday.",
+                    "transcript_quote": "First, Arjun, please deploy the Elastic search cluster directly to production by Thursday.",
                 },
                 {
                     "task_id": "t2",
@@ -272,8 +272,8 @@ def demo_extract_from_transcript(transcript_text: str) -> Dict[str, Any]:
             ],
             "key_decisions": [
                 {
-                    "decision": "Route Jason's Elastic deployment item through policy verification and reassign ownership.",
-                    "context_quote": "Par Dov bhai, Jason toh agle Monday tak paternity leave pe hai!",
+                    "decision": "Route Arjun's Elastic deployment item through policy verification and reassign ownership.",
+                    "context_quote": "Par Dov bhai, Arjun toh agle Monday tak paternity leave pe hai!",
                 },
                 {
                     "decision": "Enforce 14-day staging bake compliance and executive compute budget sign-off before production.",

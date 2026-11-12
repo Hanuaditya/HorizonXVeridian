@@ -201,7 +201,7 @@ npm run live          # from repo root — runs concurrently
 ┌────────────────────────────────────────────────────────────────────────┐
 │  5. MANAGER APPROVAL GATE  (hitl_interrupt_node → Slack Block Kit)     │
 │  Zero Jira tickets created yet.                                        │
-│  Slack DM to Manager U_MGR_DEMO: Block Kit Review Menu with           │
+│  Slack DM to Manager U_MGR_DEMO: Block Kit Review Menu with            │
 │  each task title, description, proposed commit message, flags          │
 │  "Approve & Create Tickets" button (action_id: approve_sprint_tickets) │
 │  OR click URL http://localhost:3000/workos?thread=<id>&action=approve  │
@@ -215,8 +215,8 @@ npm run live          # from repo root — runs concurrently
 │  For each approved task:                                               │
 │  - Lookup Jira accountId: GET /rest/api/3/user/search?query={email}    │
 │  - Create Jira ticket in SCRUM project, assign accountId               │
-│  - Post 1-on-1 Slack DM to assignee (U_EMP_A_DEMO or U_EMP_B_DEMO)      │
-│  - Post Approval confirmation DM to Manager U_MGR_DEMO                │
+│  - Post 1-on-1 Slack DM to assignee (U_EMP_A_DEMO or U_EMP_B_DEMO)     │
+│  - Post Approval confirmation DM to Manager U_MGR_DEMO                 │
 │  Idempotent: task_id → jira_key stored; retries never duplicate        │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
@@ -235,24 +235,23 @@ npm run live          # from repo root — runs concurrently
 
 ---
 
-## 5. Real Team — 3-Person Organization
+## 5. Team Identities & Fictional Personas
 
-**Org ID:** `org_demo_horizon_veridian`  
-**Seeded with:** `python scripts/seed_live_supabase.py --org-id org_demo_horizon_veridian --force`
+In public repository code, documentation, and automated tests, **clean fictional personas** are used. Live production bindings for real user accounts are loaded dynamically from gitignored `local.identities.json` or environment variables without ever hardcoding personal data into git.
 
-| Person | Role | Clerk User ID | Slack Member ID | Email | Domain Skills |
+| Persona | Role | Clerk User ID | Slack Member ID | Email | Domain Skills |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Hanu Aditya** | Engineering Manager (`org:admin`) | `user_clerk_manager_demo` | `U_MGR_DEMO` | `aarav.sharma@example.com` | management, architecture, security, infra |
-| **catchme if** | Senior Backend Engineer (`org:member`) | `user_clerk_emp_a_demo` | `U_EMP_A_DEMO` | `rohan.patel@example.com` | elasticsearch, aws, backend, infra, kubernetes (1 active task) |
-| **Resigo** | Product & Frontend Engineer (`org:member`) | `user_clerk_emp_b_demo` | `U_EMP_B_DEMO` | `priya.sen@example.com` | frontend, auth, oauth, ui, api (2 active tasks) |
-| **Arjun Rao** | Backend Engineer — `ON_PATERNITY_LEAVE` | `user_demo_arjun` | `U_ARJUN_DEMO` | `arjun.rao@example.com` | elasticsearch, aws, backend → triggers Smart Leave Redirect to **catchme if** |
+| **Aarav Sharma** | Engineering Manager (`org:admin`) | `user_clerk_manager_demo` | `U_MGR_DEMO` | `aarav.sharma@example.com` | management, architecture, security, infra |
+| **Rohan Patel** | Senior Backend Engineer (`org:member`) | `user_clerk_emp_a_demo` | `U_EMP_A_DEMO` | `rohan.patel@example.com` | elasticsearch, aws, backend, infra, kubernetes (1 active task) |
+| **Priya Sen** | Product & Frontend Engineer (`org:member`) | `user_clerk_emp_b_demo` | `U_EMP_B_DEMO` | `priya.sen@example.com` | frontend, auth, oauth, ui, api (2 active tasks) |
+| **Arjun Rao** | Backend Engineer — `ON_PATERNITY_LEAVE` | `user_demo_arjun` | `U_ARJUN_DEMO` | `arjun.rao@example.com` | elasticsearch, aws, backend → triggers Smart Leave Redirect to **Rohan Patel** |
 
 ### Role-Based UI on `/workos`
 
 | Clerk `orgRole` | What They See |
 | :--- | :--- |
-| `org:admin` (Hanu Aditya) | **Manager Command Center**: Review menu, compliance alerts, leave-redirect card, full team Jira status, Run Check-In Now button, Manager Slack DM feed |
-| `org:member` (catchme if / Resigo) | **Personal Employee Workspace**: Only their own tasks and tickets, only their own 1-on-1 Veridian Bot DM thread — Manager controls hidden |
+| `org:admin` (Aarav Sharma) | **Manager Command Center**: Review menu, compliance alerts, leave-redirect card, full team Jira status, Run Check-In Now button, Manager Slack DM feed |
+| `org:member` (Rohan Patel / Priya Sen) | **Personal Employee Workspace**: Only their own tasks and tickets, only their own 1-on-1 Veridian Bot DM thread — Manager controls hidden |
 
 ### API Access Control
 | Endpoint | Who can call |
@@ -342,7 +341,7 @@ Security: all untrusted transcript/commit/Slack text is wrapped in `<untrusted_d
 ### `apps/web/app/(root)/(home)/workos/page.tsx`
 - Reads `orgRole` from Clerk auth
 - `isAdmin = orgRole === "org:admin"` → renders `ManagerCommandPane` or `EmployeeBotPane`
-- `FULL_SPRINT_DEMO_TRANSCRIPT` preset references Hanu Aditya, catchme if, Resigo, Arjun Rao
+- `FULL_SPRINT_DEMO_TRANSCRIPT` preset references Aarav Sharma, Rohan Patel, Priya Sen, Arjun Rao (paternity leave)
 
 ### `apps/web/providers/AuthBridge.tsx`
 - Populates `AppUser { userId, orgId, orgRole, email, name }` from Clerk
@@ -453,7 +452,7 @@ pytest services/media/tests -v      #  7 tests
 | :--- | :--- | :--- |
 | `test_phase2_auth_rls_seed.py` | 8 | Clerk JWT auth, RLS isolation between orgs, startup vector dimension check |
 | `test_phase4_and_graph_b.py` | 6 | Graph A golden transcript firewall, HITL persistence, idempotent dispatch, prompt-injection rejection, Slack/GitHub webhook HMAC, Gemini LLM routing |
-| `test_role_separation_and_team_wiring.py` | 4 | `org:member` 403 on approve/checkin, Jira email→accountId lookup, individual Slack DM routing to U_MGR_DEMO/U_EMP_A_DEMO/U_EMP_B_DEMO, Smart Leave redirecting Jason → catchme if |
+| `test_role_separation_and_team_wiring.py` | 4 | `org:member` 403 on approve/checkin, Jira email→accountId lookup, individual Slack DM routing to U_MGR_DEMO/U_EMP_A_DEMO/U_EMP_B_DEMO, Smart Leave redirecting Arjun → Rohan Patel |
 | `test_sprint_orchestrator.py` | 3 | Zero tickets before manager approval, immediate compliance alert (budget+policy+SEC-POL-104), interval check-ins + natural-language auto-close |
 
 ---
@@ -498,7 +497,7 @@ python packages/contracts/scripts/generate_contracts.py --check
 python packages/contracts/scripts/generate_contracts.py
 
 # Seed live Supabase (3-person team)
-python scripts/seed_live_supabase.py --org-id org_demo_horizon_veridian --force
+python scripts/seed_live_supabase.py --org-id org_your_clerk_org_id --force
 
 # Verify all API keys
 python scripts/verify_keys.py
@@ -546,3 +545,4 @@ Multi-region deploy, on-prem LLM, non-Jira trackers, non-Slack messengers, mobil
 
 > **Last updated:** 2026-11-13 by Antigravity (AI agent, session `68f04738`).  
 > **Git state:** `master` @ `cea1ad7` — 28 tests passing, CI green, all 3 services live.
+

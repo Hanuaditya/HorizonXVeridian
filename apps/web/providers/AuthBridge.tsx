@@ -36,8 +36,8 @@ export interface AppAuthValue {
 
 const DEMO_USER: AppUser = {
   id: 'user_clerk_manager_demo',
-  username: 'hanu.manager',
-  fullName: 'Hanu Aditya (Engineering Manager)',
+  username: 'aarav.manager',
+  fullName: 'Aarav Sharma (Engineering Manager)',
   imageUrl: '/images/avatar-1.jpeg',
   email: 'aarav.sharma@example.com',
 };

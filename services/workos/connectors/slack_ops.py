@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.config import get_settings
@@ -20,25 +22,67 @@ def has_real_slack_creds() -> bool:
     )
 
 
-MANAGER_SLACK_USER_ID = "U_MGR_DEMO"
-EMPLOYEE_A_SLACK_USER_ID = "U_EMP_A_DEMO"  # catchme if (rohan.patel@example.com)
-EMPLOYEE_B_SLACK_USER_ID = "U_EMP_B_DEMO"  # Resigo (priya.sen@example.com)
+def _load_local_team_identities() -> list[dict]:
+    for cand in [Path("local.identities.json"), Path(__file__).resolve().parents[3] / "local.identities.json"]:
+        if cand.exists():
+            try:
+                with open(cand, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and "team" in data and isinstance(data["team"], list):
+                        return data["team"]
+                    elif isinstance(data, list):
+                        return data
+            except Exception:
+                pass
+    return []
 
-_SLACK_USER_MAP = {
-    "hanu aditya": MANAGER_SLACK_USER_ID,
-    "aarav.sharma@example.com": MANAGER_SLACK_USER_ID,
+
+_LOCAL_TEAM = _load_local_team_identities()
+
+MANAGER_SLACK_USER_ID = "U_MGR_DEMO"
+EMPLOYEE_A_SLACK_USER_ID = "U_EMP_A_DEMO"
+EMPLOYEE_B_SLACK_USER_ID = "U_EMP_B_DEMO"
+
+_SLACK_USER_MAP: Dict[str, str] = {
     "manager": MANAGER_SLACK_USER_ID,
-    "user_31kwrn5f4zl7jcioikj1rg05ito": MANAGER_SLACK_USER_ID,
-    "catchme if": EMPLOYEE_A_SLACK_USER_ID,
-    "catchme": EMPLOYEE_A_SLACK_USER_ID,
+    "aarav sharma": MANAGER_SLACK_USER_ID,
+    "aarav.sharma@example.com": MANAGER_SLACK_USER_ID,
+    "user_clerk_manager_demo": MANAGER_SLACK_USER_ID,
+    "rohan patel": EMPLOYEE_A_SLACK_USER_ID,
     "rohan.patel@example.com": EMPLOYEE_A_SLACK_USER_ID,
-    "user_3m0ymvnwbjcx3krbqyl5eb2nn71": EMPLOYEE_A_SLACK_USER_ID,
+    "user_clerk_emp_a_demo": EMPLOYEE_A_SLACK_USER_ID,
     "employee a": EMPLOYEE_A_SLACK_USER_ID,
-    "resigo": EMPLOYEE_B_SLACK_USER_ID,
+    "priya sen": EMPLOYEE_B_SLACK_USER_ID,
     "priya.sen@example.com": EMPLOYEE_B_SLACK_USER_ID,
-    "user_31vzunj55onwyw2d4wevxvtvheh": EMPLOYEE_B_SLACK_USER_ID,
+    "user_clerk_emp_b_demo": EMPLOYEE_B_SLACK_USER_ID,
     "employee b": EMPLOYEE_B_SLACK_USER_ID,
+    "arjun rao": "U_ARJUN_DEMO",
+    "arjun.rao@example.com": "U_ARJUN_DEMO",
 }
+
+for member in _LOCAL_TEAM:
+    s_id = str(member.get("slack_user_id") or member.get("slack_id") or "").strip()
+    if not s_id:
+        continue
+    fn = str(member.get("full_name") or member.get("name") or "").strip().lower()
+    em = str(member.get("email") or "").strip().lower()
+    ck = str(member.get("clerk_user_id") or "").strip().lower()
+    role_str = str(member.get("role") or "").strip().lower()
+    if "manager" in role_str or "admin" in role_str:
+        MANAGER_SLACK_USER_ID = s_id
+        _SLACK_USER_MAP["manager"] = s_id
+    elif "backend" in role_str or "emp_a" in ck:
+        EMPLOYEE_A_SLACK_USER_ID = s_id
+        _SLACK_USER_MAP["employee a"] = s_id
+    elif "frontend" in role_str or "emp_b" in ck:
+        EMPLOYEE_B_SLACK_USER_ID = s_id
+        _SLACK_USER_MAP["employee b"] = s_id
+    if fn:
+        _SLACK_USER_MAP[fn] = s_id
+    if em:
+        _SLACK_USER_MAP[em] = s_id
+    if ck:
+        _SLACK_USER_MAP[ck] = s_id
 
 _DM_CHANNEL_CACHE: Dict[str, str] = {}
 
@@ -48,17 +92,17 @@ def resolve_slack_user_id(
     role: str = "employee",
     org_id: Optional[str] = None,
 ) -> Optional[str]:
-    """Map recipient name, email, clerk id, or role to real Slack Member ID (U0...)."""
+    """Map recipient name, email, clerk id, or role to Slack Member ID."""
     rec_clean = (recipient or "").strip().lower()
-    if rec_clean.startswith("u0") or (rec_clean.startswith("u") and len(rec_clean) >= 9):
+    if rec_clean.startswith("u0") or (rec_clean.startswith("u_") and len(rec_clean) >= 6) or (rec_clean.startswith("u") and len(rec_clean) >= 9):
         return recipient.strip()
-    if role == "manager" or rec_clean in {"manager", "hanu aditya", "aarav.sharma@example.com"}:
+    if role == "manager" or rec_clean in {"manager", "aarav sharma", "aarav.sharma@example.com"}:
         return MANAGER_SLACK_USER_ID
     if rec_clean in _SLACK_USER_MAP:
         return _SLACK_USER_MAP[rec_clean]
-    if "catchme" in rec_clean or "ifcatchme34" in rec_clean:
+    if "rohan" in rec_clean:
         return EMPLOYEE_A_SLACK_USER_ID
-    if "resigo" in rec_clean:
+    if "priya" in rec_clean:
         return EMPLOYEE_B_SLACK_USER_ID
     if org_id:
         try:

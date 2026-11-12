@@ -96,3 +96,4 @@ Each Gnani API call now emits a structured log line with provider, model, and a 
 | `ARCHITECTURE.md` §4 Phase 1 | "WhisperX transcription + speaker diarization" | "Gnani Prisma v3.0 transcription + speaker diarization" |
 | `README.md` CI badge URL | `horizon-veridian/horizon-veridian` | `Hanuaditya/HorizonXVeridian` |
 | `AGENTS.md` §2 | No distinction between Evon and Gemini | Now notes Gemini is the actual runtime fallback |
+

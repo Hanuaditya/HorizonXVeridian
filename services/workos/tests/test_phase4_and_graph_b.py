@@ -25,8 +25,8 @@ from core.store import get_local_store, list_audit_trail, upsert_tasks
 
 GOLDEN_HINGLISH_TRANSCRIPT = """
 [00:00 - Dov]: Team, welcome. We have three main items today.
-[00:15 - Dov]: First, Jason, please deploy the Elastic search cluster directly to production by Thursday.
-[00:30 - Amit]: Par Dov bhai, Jason toh agle Monday tak paternity leave pe hai!
+[00:15 - Dov]: First, Arjun, please deploy the Elastic search cluster directly to production by Thursday.
+[00:30 - Amit]: Par Dov bhai, Arjun toh agle Monday tak paternity leave pe hai!
 [00:45 - Dov]: Oh right. Josh, can you take that over and deploy it directly to AWS production?
 [01:05 - Scott]: Wait, our staging policy says any major database upgrade needs at least 14 days bake time in staging first. We cannot skip to prod.
 [01:25 - Scott]: Also, Dov, that enterprise cluster instance will cost around Rs 2.5 Lakhs a month.

@@ -33,9 +33,9 @@ load_dotenv(REPO_ROOT / ".env", override=False)
 from db.seed.seed_cli import run_seed  # noqa: E402
 from core.store import _get_supabase, list_employees, using_live_supabase  # noqa: E402
 
-REAL_TEAM_MEMBERS = [
+DEFAULT_TEAM_MEMBERS = [
     {
-        "full_name": "Hanu Aditya",
+        "full_name": "Aarav Sharma",
         "email": "aarav.sharma@example.com",
         "clerk_user_id": "user_clerk_manager_demo",
         "slack_user_id": "U_MGR_DEMO",
@@ -46,7 +46,7 @@ REAL_TEAM_MEMBERS = [
         "active_task_count": 0,
     },
     {
-        "full_name": "catchme if",
+        "full_name": "Rohan Patel",
         "email": "rohan.patel@example.com",
         "clerk_user_id": "user_clerk_emp_a_demo",
         "slack_user_id": "U_EMP_A_DEMO",
@@ -57,7 +57,7 @@ REAL_TEAM_MEMBERS = [
         "active_task_count": 1,
     },
     {
-        "full_name": "Resigo",
+        "full_name": "Priya Sen",
         "email": "priya.sen@example.com",
         "clerk_user_id": "user_clerk_emp_b_demo",
         "slack_user_id": "U_EMP_B_DEMO",
@@ -80,6 +80,25 @@ REAL_TEAM_MEMBERS = [
         "leave_until": "2026-12-15",
     },
 ]
+
+
+def load_live_team_members() -> list[dict]:
+    """Load team identities from gitignored local.identities.json or fallback to clean defaults."""
+    local_file = REPO_ROOT / "local.identities.json"
+    if local_file.exists():
+        try:
+            with open(local_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and "team" in data and isinstance(data["team"], list):
+                    return data["team"]
+                elif isinstance(data, list):
+                    return data
+        except Exception:
+            pass
+    return DEFAULT_TEAM_MEMBERS
+
+
+REAL_TEAM_MEMBERS = load_live_team_members()
 
 
 def _slugify(val: str) -> str:
