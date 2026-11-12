@@ -109,14 +109,18 @@ export function useAgentStream(threadId: string | null) {
               resolutions: (p.resolutions as WorkOSThreadState['resolutions']) ?? prev.resolutions,
               key_decisions: (p.key_decisions as WorkOSThreadState['key_decisions']) ?? prev.key_decisions,
               meeting_context: (p.meeting_context as WorkOSThreadState['meeting_context']) ?? prev.meeting_context,
+              immediate_alerts:
+                (p.immediate_alerts as WorkOSThreadState['immediate_alerts']) ?? prev.immediate_alerts,
+              slack_feed: (p.slack_feed as WorkOSThreadState['slack_feed']) ?? prev.slack_feed,
             }));
-          } else if (envelope.event_type === 'dispatched') {
+          } else if (envelope.event_type === 'dispatched' || envelope.event_type === 'tracker_update') {
             setAgentState((prev) => ({
               ...prev,
               tasks: (p.tasks as WorkOSThreadState['tasks']) ?? prev.tasks,
               dispatched_tickets:
                 (p.dispatched_tickets as WorkOSThreadState['dispatched_tickets']) ??
                 prev.dispatched_tickets,
+              slack_feed: (p.slack_feed as WorkOSThreadState['slack_feed']) ?? prev.slack_feed,
               approver_user_id: (p.approved_by as string) ?? prev.approver_user_id,
             }));
           } else if (envelope.event_type === 'error') {
@@ -142,8 +146,16 @@ export function useAgentStream(threadId: string | null) {
 
     connect();
 
+    // Lightweight background sync so live Slack DM replies reflect in the UI automatically
+    const syncTimer = setInterval(() => {
+      if (!closed) {
+        fetchSnapshot(threadId);
+      }
+    }, 3000);
+
     return () => {
       closed = true;
+      clearInterval(syncTimer);
       es?.close();
     };
   }, [threadId, fetchSnapshot]);

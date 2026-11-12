@@ -10,6 +10,8 @@ interface WorkflowHeaderProps {
   threadId?: string | null;
   steps: StepItem[];
   simulating?: boolean;
+  splitView?: boolean;
+  onToggleSplitView?: () => void;
   onRunSimulation?: () => void;
   onReset?: () => void;
 }
@@ -32,6 +34,8 @@ export default function WorkflowHeader({
   threadId,
   steps,
   simulating = false,
+  splitView = true,
+  onToggleSplitView,
   onRunSimulation,
   onReset,
 }: WorkflowHeaderProps) {
@@ -59,6 +63,19 @@ export default function WorkflowHeader({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {onToggleSplitView && (
+            <button
+              type="button"
+              onClick={onToggleSplitView}
+              className={`rounded-lg border px-3.5 py-2 text-xs font-semibold transition ${
+                splitView
+                  ? 'border-sky-400/50 bg-sky-500/20 text-sky-100'
+                  : 'border-white/15 bg-dark-2 text-white/70 hover:text-white'
+              }`}
+            >
+              {splitView ? 'Split Demo View: ON' : 'Split Demo View (Manager + Employee)'}
+            </button>
+          )}
           {onRunSimulation && (
             <button
               type="button"

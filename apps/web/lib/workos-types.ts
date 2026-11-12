@@ -9,6 +9,31 @@ export type WorkOSPhase =
   | 'COMPLETE'
   | 'ERROR';
 
+export interface WorkOSComplianceAlert {
+  task_id: string;
+  type: 'BUDGET' | 'POLICY' | 'BLOCKED_API' | string;
+  title: string;
+  message: string;
+  provenance?: string;
+}
+
+export interface WorkOSSlackMessage {
+  id: string;
+  org_id: string;
+  thread_id: string;
+  role: 'manager' | 'employee' | string;
+  sender: string;
+  recipient: string;
+  text: string;
+  slack_channel?: string;
+  slack_ts?: string;
+  task_id?: string | null;
+  jira_key?: string | null;
+  kind?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface WorkOSTask {
   task_id: string;
   title: string;
@@ -28,13 +53,20 @@ export interface WorkOSTask {
   capacity_flag?: string | null;
   capacity_provenance?: string | null;
   rerouted_assignee?: string | null;
+  leave_recommendation?: string | null;
   resolution_action?: string | null;
   reframed_title?: string | null;
   reframed_description?: string | null;
+  proposed_commit_message?: string | null;
   jira_ticket_id?: string | null;
   jira_url?: string | null;
+  jira_status?: string | null;
   slack_dm_sent?: boolean;
   dispatch_error?: string | null;
+  progress_pct?: number;
+  completed_milestones?: string | null;
+  blockers?: string | null;
+  commit_summary?: string | null;
 }
 
 export interface WorkOSResolution {
@@ -64,6 +96,10 @@ export interface WorkOSDispatchedTicket {
   assignee: string;
   jira_key: string;
   jira_url: string;
+  jira_status?: string;
+  commit_message?: string;
+  commit_summary?: string;
+  progress_pct?: number;
   slack_sent?: boolean;
   mode?: string;
 }
@@ -78,8 +114,11 @@ export interface WorkOSThreadState {
   resolutions?: WorkOSResolution[];
   key_decisions?: WorkOSDecision[];
   meeting_context?: WorkOSMeetingContext;
+  immediate_alerts?: WorkOSComplianceAlert[];
+  slack_feed?: WorkOSSlackMessage[];
   dispatched_tickets?: WorkOSDispatchedTicket[];
   approver_user_id?: string | null;
+  manager_approved?: boolean;
 }
 
 export interface WorkOSEmployee {
@@ -92,6 +131,8 @@ export interface WorkOSEmployee {
   jira_account_id?: string | null;
   status: string;
   capacity_cache: number;
+  domain_skills?: string[];
+  active_task_count?: number;
 }
 
 export interface WorkOSAuditEntry {
@@ -106,4 +147,3 @@ export interface WorkOSAuditEntry {
   actor_id?: string | null;
   created_at: string;
 }
-

@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { authorization } = await getWorkOSAuthHeader();
-    const res = await fetch(`${getWorkOSBaseUrl()}/api/demo/meeting-ended`, {
+    const res = await fetch(`${getWorkOSBaseUrl()}/api/transcript-ingest`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

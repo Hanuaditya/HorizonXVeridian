@@ -9,6 +9,8 @@ import MeetingOverview from '@/components/workos/MeetingOverview';
 import DecisionsMade from '@/components/workos/DecisionsMade';
 import ApprovalsPanel from '@/components/workos/ApprovalsPanel';
 import ProgressTracker from '@/components/workos/ProgressTracker';
+import ManagerCommandPane from '@/components/workos/ManagerCommandPane';
+import EmployeeBotPane from '@/components/workos/EmployeeBotPane';
 
 const GOLDEN_HINGLISH_TRANSCRIPT = `[00:00 - Dov]: Team, welcome. We have three main items today.
 [00:15 - Dov]: First, Jason, please deploy the Elastic search cluster directly to production by Thursday.
@@ -18,6 +20,14 @@ const GOLDEN_HINGLISH_TRANSCRIPT = `[00:00 - Dov]: Team, welcome. We have three 
 [01:25 - Scott]: Also, Dov, that enterprise cluster instance will cost around Rs 2.5 Lakhs a month.
 [01:40 - Amit]: Let me check finance... Hamara compute budget for this quarter is already 0. We need approval before provisioning enterprise tier.
 [02:00 - Dov]: Theek hai, let's have the AI platform check our policies, route it to the right person, and create the tickets. Meeting adjourned!`;
+
+const FULL_SPRINT_DEMO_TRANSCRIPT = `[00:00 - Manager]: Let's review our Q4 Sprint commitments for two engineers.
+[00:12 - Manager]: First, Arjun Rao, deploy the Elastic search cluster directly to AWS production by Friday.
+[00:25 - Amit]: Note that Arjun Rao is currently on paternity leave until next Monday! Also the enterprise cluster costs Rs 2.5 Lakhs/month while Q4 compute_infra budget remaining is 0 INR.
+[00:40 - Scott]: Also remember SEC-POL-089 prohibits skipping the 14-day staging bake period before AWS production.
+[00:55 - Manager]: Understood. Second, Gabe Weaver, please integrate the unsupported Legacy v1 Payment API directly into the React auth checkout flow by Thursday.
+[01:10 - Scott]: Flagging that — SEC-POL-104 blocks integrating unsupported or unapproved Legacy v1 third-party APIs into production.
+[01:25 - Manager]: Send me immediate alerts, suggest a domain-matched replacement for Jason, and wait for my approval before creating any Jira tickets.`;
 
 export default function WorkOSHubPage() {
   return (
@@ -31,15 +41,27 @@ function WorkOSHubContent() {
   const { isManager, orgId } = useAppAuth();
   const [threadId, setThreadId] = useState<string | null>(null);
   const [recentThreads, setRecentThreads] = useState<WorkOSThreadState[]>([]);
-  const [transcript, setTranscript] = useState<string>(GOLDEN_HINGLISH_TRANSCRIPT);
-  const [meetingTitle, setMeetingTitle] = useState<string>('Q4 Hinglish Sprint Sync (Gnani Demo)');
+  const [transcript, setTranscript] = useState<string>(FULL_SPRINT_DEMO_TRANSCRIPT);
+  const [meetingTitle, setMeetingTitle] = useState<string>('Q4 Full Sprint Orchestrator Demo');
+  const [splitView, setSplitView] = useState<boolean>(true);
+  const [checkingIn, setCheckingIn] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [auditEntries, setAuditEntries] = useState<WorkOSAuditEntry[]>([]);
 
-  const { agentState, phase, steps, streamError } = useAgentStream(threadId);
+  const { agentState, phase, steps, streamError, refreshState } = useAgentStream(threadId);
   const { resume, resuming, resumeError } = useHITLResume();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const tid = sp.get('thread');
+    if (tid) {
+      setThreadId(tid);
+      setSplitView(true);
+    }
+  }, []);
 
   useEffect(() => {
     const loadRecent = async () => {
@@ -125,6 +147,54 @@ function WorkOSHubContent() {
     }
   };
 
+  const handleRunFullSprintPreset = async () => {
+    setSplitView(true);
+    setMeetingTitle('Q4 Full Sprint Orchestrator Demo');
+    setTranscript(FULL_SPRINT_DEMO_TRANSCRIPT);
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch('/api/workos/meeting-ended', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meeting_id: `sprint-${Date.now()}`,
+          title: 'Q4 Full Sprint Orchestrator Demo',
+          transcript: FULL_SPRINT_DEMO_TRANSCRIPT,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+      }
+      setThreadId(data.thread_id);
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to start Full Sprint Demo');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleTriggerCheckin = async () => {
+    if (!threadId) return;
+    setCheckingIn(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch(`/api/workos/threads/${encodeURIComponent(threadId)}/checkin`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.error || `Check-in failed (${res.status})`);
+      }
+      await refreshState();
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to trigger check-in DMs');
+    } finally {
+      setCheckingIn(false);
+    }
+  };
+
   const handleReset = () => {
     setThreadId(null);
     setAuditEntries([]);
@@ -139,6 +209,8 @@ function WorkOSHubContent() {
         threadId={threadId}
         steps={steps}
         simulating={simulating}
+        splitView={splitView}
+        onToggleSplitView={() => setSplitView((v) => !v)}
         onRunSimulation={handleRunSimulation}
         onReset={threadId ? handleReset : undefined}
       />
@@ -148,22 +220,40 @@ function WorkOSHubContent() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-bold text-white">
-                Custom Transcript Runner & Golden Hinglish Scenario
+                Sprint Governance Runner & Dual-Perspective Demo Presets
               </h2>
               <p className="mt-1 text-xs text-white/60">
-                Click <span className="font-semibold text-purple-300">▶ Run Hinglish Demo Simulation</span>{' '}
-                above to trigger the full Media (5001) → Signed `meeting.ended` → WorkOS (8000) SSE
-                pipeline, or submit custom text below.
+                Launch the 6-stage Sprint Orchestrator (Manager Alerts → Leave Redirect → Slack Approval Gate → Check-In Loop → Auto-Close Jira) or customize transcript text below.
               </p>
             </div>
-            <button
-              type="button"
-              disabled={submitting || !transcript.trim()}
-              onClick={handleRunPipeline}
-              className="rounded-lg bg-blue-1 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-600 disabled:opacity-50"
-            >
-              {submitting ? 'Starting Graph A...' : 'Run Transcript Directly'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={handleRunFullSprintPreset}
+                className="rounded-lg bg-gradient-to-r from-amber-500 to-purple-600 px-4 py-2.5 text-xs font-bold text-white shadow transition hover:opacity-95 disabled:opacity-50"
+              >
+                {submitting ? 'Running Full Sprint Demo...' : 'Full Sprint Demo (2 Employees + Leave Redirect + Policy/API Alert)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMeetingTitle('Q4 Hinglish Sprint Sync (Gnani Demo)');
+                  setTranscript(GOLDEN_HINGLISH_TRANSCRIPT);
+                }}
+                className="rounded-lg border border-white/15 bg-dark-2 px-3 py-2 text-xs font-medium text-white/75 hover:text-white"
+              >
+                Load Hinglish Sync Preset
+              </button>
+              <button
+                type="button"
+                disabled={submitting || !transcript.trim()}
+                onClick={handleRunPipeline}
+                className="rounded-lg bg-blue-1 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-blue-600 disabled:opacity-50"
+              >
+                {submitting ? 'Starting Graph A...' : 'Run Transcript Directly'}
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 grid gap-4 md:grid-cols-3">
@@ -239,29 +329,63 @@ function WorkOSHubContent() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <MeetingOverview meetingContext={agentState.meeting_context} phase={phase} />
-        <DecisionsMade
-          tasks={agentState.tasks ?? {}}
-          keyDecisions={agentState.key_decisions ?? []}
-        />
-        <ApprovalsPanel
-          tasks={agentState.tasks ?? {}}
-          resolutions={agentState.resolutions ?? []}
-          phase={phase}
-          threadId={threadId}
-          isManager={isManager}
-          resuming={resuming}
-          resumeError={resumeError}
-          onResume={resume}
-        />
-        <ProgressTracker
-          dispatchedTickets={agentState.dispatched_tickets ?? []}
-          phase={phase}
-          approverUserId={agentState.approver_user_id}
-          auditEntries={auditEntries}
-        />
-      </div>
+      {splitView ? (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          <ManagerCommandPane
+            threadId={threadId}
+            phase={phase}
+            tasks={agentState.tasks ?? {}}
+            resolutions={agentState.resolutions ?? []}
+            alerts={agentState.immediate_alerts ?? []}
+            dispatchedTickets={agentState.dispatched_tickets ?? []}
+            slackFeed={agentState.slack_feed ?? []}
+            approverUserId={agentState.approver_user_id}
+            isManager={isManager}
+            resuming={resuming}
+            resumeError={resumeError}
+            checkingIn={checkingIn}
+            onApproveAll={async (tid, decs) => {
+              const out = await resume(tid, decs);
+              setTimeout(() => {
+                refreshState();
+              }, 800);
+              return out;
+            }}
+            onTriggerCheckin={handleTriggerCheckin}
+          />
+          <EmployeeBotPane
+            threadId={threadId}
+            tasks={agentState.tasks ?? {}}
+            dispatchedTickets={agentState.dispatched_tickets ?? []}
+            slackFeed={agentState.slack_feed ?? []}
+            onAfterReply={refreshState}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <MeetingOverview meetingContext={agentState.meeting_context} phase={phase} />
+          <DecisionsMade
+            tasks={agentState.tasks ?? {}}
+            keyDecisions={agentState.key_decisions ?? []}
+          />
+          <ApprovalsPanel
+            tasks={agentState.tasks ?? {}}
+            resolutions={agentState.resolutions ?? []}
+            phase={phase}
+            threadId={threadId}
+            isManager={isManager}
+            resuming={resuming}
+            resumeError={resumeError}
+            onResume={resume}
+          />
+          <ProgressTracker
+            dispatchedTickets={agentState.dispatched_tickets ?? []}
+            phase={phase}
+            approverUserId={agentState.approver_user_id}
+            auditEntries={auditEntries}
+          />
+        </div>
+      )}
     </section>
   );
 }
