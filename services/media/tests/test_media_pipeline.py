@@ -82,9 +82,18 @@ def test_media_demo_simulate_route(tmp_path, monkeypatch):
         "pipeline.dubber.publish_meeting_ended",
         lambda payload: {"status": "accepted", "thread_id": f"thr-{payload.meeting_id}"},
     )
-    sim_res = media_app.test_client().post("/media/demo-simulate", json={})
+    client = media_app.test_client()
+    sim_res = client.post("/media/demo-simulate", json={"meeting_id": "sim-static-old"})
+    sim_res_2 = client.post("/media/demo-simulate", json={"meeting_id": "sim-static-old"})
     assert sim_res.status_code == 202
-    assert sim_res.get_json()["status"] == "dispatched_to_workos"
+    assert sim_res_2.status_code == 202
+    d1 = sim_res.get_json()
+    d2 = sim_res_2.get_json()
+    assert d1["status"] == "dispatched_to_workos"
+    assert d1["meeting_id"].startswith("sim-")
+    assert d1["meeting_id"] != "sim-static-old"
+    assert d1["meeting_id"] != d2["meeting_id"]
+    assert d1["thread_id"] != d2["thread_id"]
 
 
 def test_transcriber_factory_and_strict_speaker_attribution(monkeypatch):

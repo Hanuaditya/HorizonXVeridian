@@ -70,9 +70,9 @@ def poll_media_job(job_id: str):
 
 @app.route("/media/demo-simulate", methods=["POST"])
 def demo_simulate_route():
-    """Run offline Hinglish simulation and emit HMAC-signed meeting.ended to WorkOS."""
+    """Run Hinglish showcase simulation with a guaranteed fresh unique meeting_id per click."""
     body = request.get_json(silent=True) or {}
-    meeting_id = body.get("meeting_id") or f"sim-{uuid.uuid4().hex[:8]}"
+    meeting_id = f"sim-{uuid.uuid4().hex[:8]}"
     org_id = body.get("org_id") or "org_demo_horizon"
     try:
         res = process_media_job(

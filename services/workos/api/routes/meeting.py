@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -97,7 +98,7 @@ async def run_graph_a_background(thread_id: str, initial_state: Dict[str, Any]) 
         )
 
         graph = get_graph_a()
-        result = graph.invoke(initial_state, config=config)
+        result = await asyncio.to_thread(graph.invoke, initial_state, config=config)
 
         if result and result.get("__drop__"):
             await sse_manager.push_error(
