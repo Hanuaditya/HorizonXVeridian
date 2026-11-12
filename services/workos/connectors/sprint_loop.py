@@ -19,6 +19,7 @@ from connectors.slack_ops import (
     post_closure_confirmation_dms,
     post_employee_checkin_dm,
     post_manager_progress_digest,
+    post_manager_review_request_dm,
     post_slack_message,
 )
 from core.config import get_settings
@@ -41,6 +42,23 @@ logger = logging.getLogger(__name__)
 _SEEN_SLACK_TS: set[tuple[str, str]] = set()
 _LAST_CHANNEL_CHECK_TS: Dict[str, str] = {}
 _CHANNEL_BACKOFF: Dict[str, float] = {}
+
+_PR_URL_REGEX = re.compile(r"https?://(?:www\.)?(?:github\.com|gitlab\.com)/[^\s]+/pull/\d+", re.IGNORECASE)
+_COMMIT_HASH_REGEX = re.compile(r"\b([0-9a-f]{7,40})\b", re.IGNORECASE)
+
+
+def extract_completion_evidence(text: str) -> Optional[Dict[str, str]]:
+    """Detect presence of PR URL or Git commit hash as verifiable evidence."""
+    if not text:
+        return None
+    pr_match = _PR_URL_REGEX.search(text)
+    if pr_match:
+        return {"type": "pr_url", "value": pr_match.group(0)}
+    for m in _COMMIT_HASH_REGEX.finditer(text):
+        cand = m.group(1)
+        if any(c in "abcdefABCDEF" for c in cand) or len(cand) >= 8:
+            return {"type": "commit_hash", "value": cand}
+    return None
 
 
 class CheckinReplyAnalysis(BaseModel):
@@ -350,13 +368,15 @@ async def process_employee_reply(
     analysis = await asyncio.to_thread(analyze_employee_reply, reply_text, task_title, False)
 
     dispatched_list = [dict(d) for d in (snap.get("dispatched_tickets") or [])]
+    evidence = extract_completion_evidence(reply_text)
 
-    if analysis.intent == "COMPLETED":
+    if analysis.intent == "COMPLETED" and evidence:
         commit_summary = analysis.commit_summary or f"feat(sprint): completed {task_title[:60]}"
+        evidence_note = f"Evidence ({evidence['type']}): {evidence['value']}"
         jira_result = await asyncio.to_thread(
             transition_jira_issue_done,
             jira_key,
-            f"Completed by {assignee}.\nCommit Summary: {commit_summary}\nUpdate: {reply_text}",
+            f"Completed by {assignee} with verified evidence [{evidence_note}].\nCommit Summary: {commit_summary}\nUpdate: {reply_text}",
         )
         task["status"] = "DONE"
         task["jira_status"] = jira_result.get("status", "Done")
@@ -364,6 +384,7 @@ async def process_employee_reply(
         task["completed_milestones"] = analysis.completed_milestones
         task["blockers"] = "None"
         task["commit_summary"] = commit_summary
+        task["completion_evidence"] = evidence
         tasks[task_id] = task
 
         for dt in dispatched_list:
@@ -391,7 +412,7 @@ async def process_employee_reply(
             jira_key=jira_key or task_id,
             jira_url=jira_url,
             task_id=task_id,
-            commit_summary=commit_summary,
+            commit_summary=f"{commit_summary} ({evidence_note})",
         )
         write_audit_trail(
             org_id=org_id,
@@ -400,8 +421,56 @@ async def process_employee_reply(
             task_id=task_id,
             event_type="TICKET_AUTO_CLOSED",
             agent_node="sprint_loop.process_employee_reply",
-            detail=f"Auto-closed {jira_key} -> Done. Commit: {commit_summary}",
-            provenance_tag=f"Natural-Language Auto-Close ({source})",
+            detail=f"Auto-closed {jira_key} -> Done. Evidence ({evidence['type']}): {evidence['value']}. Actor: system",
+            provenance_tag=f"Evidence-Based Auto-Close (actor=system, {source})",
+        )
+    elif analysis.intent == "COMPLETED" and not evidence:
+        commit_summary = analysis.commit_summary or f"feat(sprint): completed {task_title[:60]}"
+        task["status"] = "IN_REVIEW"
+        task["jira_status"] = "In Review"
+        task["progress_pct"] = 90
+        task["completed_milestones"] = analysis.completed_milestones
+        task["blockers"] = "Pending manager review (no PR/commit hash provided)"
+        task["commit_summary"] = commit_summary
+        tasks[task_id] = task
+
+        for dt in dispatched_list:
+            if dt.get("task_id") == task_id:
+                dt["jira_status"] = "In Review"
+                dt["progress_pct"] = 90
+                dt["commit_summary"] = commit_summary
+
+        if jira_key:
+            try:
+                await asyncio.to_thread(
+                    add_jira_comment,
+                    jira_key,
+                    f"Completion claimed by {assignee} without direct commit/PR evidence.\nStatus moved to In Review pending Manager confirmation.\nUpdate: {reply_text}",
+                )
+            except Exception as exc:
+                logger.warning("Jira In Review comment failed for %s: %s", jira_key, exc)
+
+        update_task_status_by_id(org_id=org_id, task_id=task_id, status="IN_REVIEW", jira_key=jira_key or None)
+
+        post_manager_review_request_dm(
+            org_id=org_id,
+            thread_id=thread_id,
+            assignee=assignee,
+            jira_key=jira_key or task_id,
+            jira_url=jira_url,
+            task_id=task_id,
+            reply_text=reply_text,
+            commit_summary=commit_summary,
+        )
+        write_audit_trail(
+            org_id=org_id,
+            meeting_id=meeting_id,
+            thread_id=thread_id,
+            task_id=task_id,
+            event_type="COMPLETION_PENDING_REVIEW",
+            agent_node="sprint_loop.process_employee_reply",
+            detail=f"{jira_key} marked In Review (missing commit/PR evidence). Manager confirmation requested. Actor: system",
+            provenance_tag=f"Non-Evidence Completion Review (actor=system, {source})",
         )
     else:
         new_status = "BLOCKED" if analysis.intent == "BLOCKED" else "DISPATCHED"
@@ -487,6 +556,180 @@ async def process_employee_reply(
         "task": task,
         "dispatched_tickets": dispatched_list,
     }
+
+
+async def confirm_task_completion_by_manager(
+    org_id: str,
+    thread_id: str,
+    task_id: str,
+    actor: str = "manager",
+) -> Dict[str, Any]:
+    """Manager explicitly confirms task completion, auto-closing Jira ticket to Done."""
+    snap = get_thread_snapshot(thread_id)
+    if not snap or snap.get("org_id") != org_id:
+        raise KeyError(f"Thread '{thread_id}' not found for org '{org_id}'.")
+    tasks = {k: dict(v) for k, v in (snap.get("tasks") or {}).items()}
+    task = tasks.get(task_id)
+    if not task:
+        raise KeyError(f"Task '{task_id}' not found in thread '{thread_id}'.")
+
+    assignee = str(task.get("assignee") or "Employee")
+    jira_key = str(task.get("jira_ticket_id") or task.get("jira_key") or "")
+    jira_url = str(task.get("jira_url") or "")
+    commit_summary = str(task.get("commit_summary") or f"feat(sprint): confirmed {task_id}")
+    meeting_id = str(snap.get("meeting_id") or thread_id)
+
+    jira_result = await asyncio.to_thread(
+        transition_jira_issue_done,
+        jira_key,
+        f"Completion confirmed by Manager ({actor}).\nCommit Summary: {commit_summary}",
+    )
+    task["status"] = "DONE"
+    task["jira_status"] = jira_result.get("status", "Done")
+    task["progress_pct"] = 100
+    task["blockers"] = "None"
+    tasks[task_id] = task
+
+    dispatched_list = [dict(d) for d in (snap.get("dispatched_tickets") or [])]
+    for dt in dispatched_list:
+        if dt.get("task_id") == task_id:
+            dt["jira_status"] = task["jira_status"]
+            dt["progress_pct"] = 100
+
+    update_task_status_by_id(org_id=org_id, task_id=task_id, status="DONE", jira_key=jira_key or None)
+    post_closure_confirmation_dms(
+        org_id=org_id,
+        thread_id=thread_id,
+        assignee=assignee,
+        jira_key=jira_key or task_id,
+        jira_url=jira_url,
+        task_id=task_id,
+        commit_summary=f"{commit_summary} (Confirmed by Manager)",
+    )
+    write_audit_trail(
+        org_id=org_id,
+        meeting_id=meeting_id,
+        thread_id=thread_id,
+        task_id=task_id,
+        event_type="TICKET_MANAGER_CONFIRMED_DONE",
+        agent_node="sprint_loop.confirm_task_completion_by_manager",
+        detail=f"Manager {actor} confirmed completion of {jira_key} -> Done.",
+        provenance_tag=f"Manager-Confirmed Completion (actor={actor})",
+    )
+    save_thread_snapshot(
+        thread_id=thread_id,
+        org_id=org_id,
+        snapshot={
+            **snap,
+            "tasks": tasks,
+            "dispatched_tickets": dispatched_list,
+            "slack_feed": list_slack_feed(org_id=org_id, thread_id=thread_id),
+        },
+    )
+    await sse_manager.push_event(
+        thread_id,
+        "tracker_update",
+        {
+            "source": "manager_confirmation",
+            "task_id": task_id,
+            "tasks": tasks,
+            "dispatched_tickets": dispatched_list,
+            "slack_feed": list_slack_feed(org_id=org_id, thread_id=thread_id),
+        },
+        org_id=org_id,
+    )
+    return {"status": "confirmed_done", "task_id": task_id, "jira_key": jira_key}
+
+
+async def reject_task_completion_by_manager(
+    org_id: str,
+    thread_id: str,
+    task_id: str,
+    actor: str = "manager",
+    reason: str = "Rework requested by Manager",
+) -> Dict[str, Any]:
+    """Manager rejects task completion, setting task back to DISPATCHED / In Progress."""
+    snap = get_thread_snapshot(thread_id)
+    if not snap or snap.get("org_id") != org_id:
+        raise KeyError(f"Thread '{thread_id}' not found for org '{org_id}'.")
+    tasks = {k: dict(v) for k, v in (snap.get("tasks") or {}).items()}
+    task = tasks.get(task_id)
+    if not task:
+        raise KeyError(f"Task '{task_id}' not found in thread '{thread_id}'.")
+
+    assignee = str(task.get("assignee") or "Employee")
+    jira_key = str(task.get("jira_ticket_id") or task.get("jira_key") or "")
+    meeting_id = str(snap.get("meeting_id") or thread_id)
+
+    if jira_key:
+        try:
+            await asyncio.to_thread(
+                add_jira_comment,
+                jira_key,
+                f"Completion review rejected by Manager ({actor}).\nReason: {reason}\nStatus reverted to In Progress.",
+            )
+        except Exception as exc:
+            logger.warning("Jira rejection comment failed for %s: %s", jira_key, exc)
+
+    task["status"] = "DISPATCHED"
+    task["jira_status"] = "In Progress"
+    task["progress_pct"] = 60
+    task["blockers"] = reason
+    tasks[task_id] = task
+
+    dispatched_list = [dict(d) for d in (snap.get("dispatched_tickets") or [])]
+    for dt in dispatched_list:
+        if dt.get("task_id") == task_id:
+            dt["jira_status"] = "In Progress"
+            dt["progress_pct"] = 60
+
+    update_task_status_by_id(org_id=org_id, task_id=task_id, status="DISPATCHED", jira_key=jira_key or None)
+
+    rework_msg = f"*[Rework Requested]* `{jira_key}` needs additional work:\n• *Manager Feedback:* {reason}\nPlease update when ready."
+    post_slack_message(
+        org_id=org_id,
+        thread_id=thread_id,
+        role="employee",
+        recipient=assignee,
+        text=rework_msg,
+        channel_kind="summary",
+        task_id=task_id,
+        jira_key=jira_key,
+        kind="rework_request",
+    )
+    write_audit_trail(
+        org_id=org_id,
+        meeting_id=meeting_id,
+        thread_id=thread_id,
+        task_id=task_id,
+        event_type="TICKET_COMPLETION_REJECTED",
+        agent_node="sprint_loop.reject_task_completion_by_manager",
+        detail=f"Manager {actor} rejected completion of {jira_key}. Reason: {reason}",
+        provenance_tag=f"Manager-Rejected Completion (actor={actor})",
+    )
+    save_thread_snapshot(
+        thread_id=thread_id,
+        org_id=org_id,
+        snapshot={
+            **snap,
+            "tasks": tasks,
+            "dispatched_tickets": dispatched_list,
+            "slack_feed": list_slack_feed(org_id=org_id, thread_id=thread_id),
+        },
+    )
+    await sse_manager.push_event(
+        thread_id,
+        "tracker_update",
+        {
+            "source": "manager_rejection",
+            "task_id": task_id,
+            "tasks": tasks,
+            "dispatched_tickets": dispatched_list,
+            "slack_feed": list_slack_feed(org_id=org_id, thread_id=thread_id),
+        },
+        org_id=org_id,
+    )
+    return {"status": "rework_requested", "task_id": task_id, "jira_key": jira_key}
 
 
 def _match_task_from_slack_message(text: str, open_rows: List[Dict[str, Any]], user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:

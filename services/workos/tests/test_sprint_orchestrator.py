@@ -13,7 +13,13 @@ from fastapi.testclient import TestClient
 from api.auth import mint_demo_jwt
 from api.main import app
 from core.config import get_settings
-from core.store import get_local_store, list_slack_feed
+from core.store import (
+    get_local_store,
+    get_thread_snapshot,
+    list_audit_trail,
+    list_slack_feed,
+    save_thread_snapshot,
+)
 
 
 def _sign_body(raw_body: bytes, secret: str) -> dict:
@@ -315,10 +321,10 @@ def test_interval_checkins_partial_digest_and_natural_language_auto_close_jira(m
         assert any("/comment" in c[1] for c in jira_calls if c[0] == "POST")
         assert any(m["kind"] == "progress_digest" and m["role"] == "manager" for m in list_slack_feed("org_demo_horizon", tid))
 
-        # 3. Natural-language completion reply -> auto-transition Jira SCRUM-42 -> Done + Manager closure DM
+        # 3. Natural-language completion reply WITH evidence (commit/PR URL) -> auto-transition Jira SCRUM-42 -> Done + Manager closure DM
         done = client.post(
             f"/api/threads/{tid}/employee-reply",
-            json={"task_id": "t1", "reply_text": "My work assigned during the meeting is completed"},
+            json={"task_id": "t1", "reply_text": "My work assigned during the meeting is completed — PR https://github.com/example/repo/pull/42"},
         )
         assert done.status_code == 200
         assert done.json()["task"]["jira_status"] == "Done"
@@ -330,3 +336,84 @@ def test_interval_checkins_partial_digest_and_natural_language_auto_close_jira(m
         assert any(m["kind"] == "closure" and m["role"] == "manager" for m in feed)
     finally:
         app.dependency_overrides.pop(require_auth, None)
+
+
+def test_non_evidence_completion_requires_manager_confirm_done_or_reject(monkeypatch):
+    """Under A5, completion replies without commit/PR evidence move to IN_REVIEW and await Manager Confirm done."""
+    monkeypatch.setenv("DEMO_MODE", "true")
+    get_local_store().reset(seed_default_org=True)
+
+    mgr_token = mint_demo_jwt("user_mgr_test", "org_demo_horizon", "org:admin")
+    member_token = mint_demo_jwt("user_member_test", "org_demo_horizon", "org:member")
+
+    tid = "thr-a5-evidence-test"
+    save_thread_snapshot(
+        thread_id=tid,
+        org_id="org_demo_horizon",
+        snapshot={
+            "meeting_id": "mtg-a5-test",
+            "title": "A5 Evidence Governance Test",
+            "phase": "COMPLETE",
+            "tasks": {
+                "t1": {
+                    "task_id": "t1",
+                    "title": "Build Auth Dashboard",
+                    "assignee": "Priya Sen",
+                    "status": "DISPATCHED",
+                    "jira_ticket_id": "SCRUM-50",
+                    "jira_url": "https://example-veridian.atlassian.net/browse/SCRUM-50",
+                    "jira_status": "To Do",
+                }
+            },
+            "dispatched_tickets": [
+                {
+                    "task_id": "t1",
+                    "assignee": "Priya Sen",
+                    "jira_key": "SCRUM-50",
+                    "jira_status": "To Do",
+                }
+            ],
+        },
+    )
+
+    client = TestClient(app)
+
+    # 1. Employee replies "completed" WITHOUT evidence -> IN_REVIEW (not DONE)
+    reply_res = client.post(
+        f"/api/threads/{tid}/employee-reply",
+        json={"task_id": "t1", "reply_text": "Finished the dashboard work completely!"},
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+    assert reply_res.status_code == 200
+    task_out = reply_res.json()["task"]
+    assert task_out["status"] == "IN_REVIEW"
+    assert task_out["jira_status"] == "In Review"
+    assert task_out["progress_pct"] == 90
+
+    # Verify review card DM sent to Manager
+    feed = list_slack_feed("org_demo_horizon", tid)
+    assert any(m.get("kind") == "completion_review" and m.get("role") == "manager" for m in feed)
+
+    # 2. Non-manager employee gets 403 trying to confirm done
+    bad_conf = client.post(
+        f"/api/threads/{tid}/tasks/t1/confirm-done",
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+    assert bad_conf.status_code == 403
+
+    # 3. Manager confirms done -> Jira closed to Done, status becomes DONE
+    ok_conf = client.post(
+        f"/api/threads/{tid}/tasks/t1/confirm-done",
+        headers={"Authorization": f"Bearer {mgr_token}"},
+    )
+    assert ok_conf.status_code == 200
+    assert ok_conf.json()["status"] == "confirmed_done"
+
+    final_snap = get_thread_snapshot(tid)
+    assert final_snap["tasks"]["t1"]["status"] == "DONE"
+    assert final_snap["tasks"]["t1"]["jira_status"] == "Done"
+    assert final_snap["tasks"]["t1"]["progress_pct"] == 100
+
+    # Verify audit trail records actor=manager
+    audit = list_audit_trail("org_demo_horizon")
+    assert any(a.get("event_type") == "TICKET_MANAGER_CONFIRMED_DONE" for a in audit)

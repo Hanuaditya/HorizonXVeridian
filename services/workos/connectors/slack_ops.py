@@ -514,6 +514,68 @@ def post_manager_progress_digest(
     )
 
 
+def post_manager_review_request_dm(
+    org_id: str,
+    thread_id: str,
+    assignee: str,
+    jira_key: str,
+    jira_url: str,
+    task_id: str,
+    reply_text: str,
+    commit_summary: str,
+) -> tuple[bool, str, str]:
+    """Notify Manager that employee claimed task completion without commit/PR evidence, providing review buttons."""
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"*[Completion Review Requested]*\n"
+                    f"*{assignee}* claimed completion on `{jira_key}` without direct commit hash or PR URL evidence.\n"
+                    f"• *Status:* Moved to `In Review`\n"
+                    f"• *Update:* \"{reply_text}\"\n"
+                    f"• *Summary:* `{commit_summary}`\n"
+                    f"Please review and confirm closure or request rework:"
+                ),
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Confirm Done"},
+                    "style": "primary",
+                    "action_id": "confirm_task_done",
+                    "value": f"{thread_id}:{task_id}",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Request Rework"},
+                    "style": "danger",
+                    "action_id": "reject_task_done",
+                    "value": f"{thread_id}:{task_id}",
+                },
+            ],
+        },
+    ]
+    fallback_text = f"[Completion Review] {assignee} claims {jira_key} done. Action required: Confirm Done or Request Rework."
+    return post_slack_message(
+        org_id=org_id,
+        thread_id=thread_id,
+        role="manager",
+        recipient="Manager",
+        text=fallback_text,
+        blocks=blocks,
+        channel_kind="manager",
+        task_id=task_id,
+        jira_key=jira_key,
+        kind="completion_review",
+        metadata={"task_id": task_id, "status": "IN_REVIEW"},
+    )
+
+
 def post_closure_confirmation_dms(
     org_id: str,
     thread_id: str,

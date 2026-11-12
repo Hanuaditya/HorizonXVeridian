@@ -13,7 +13,9 @@ from api.auth import AuthContext, require_auth, require_manager
 from api.sse import sse_manager
 from connectors.sprint_loop import (
     build_default_hitl_decisions,
+    confirm_task_completion_by_manager,
     process_employee_reply,
+    reject_task_completion_by_manager,
     resume_graph_a_and_sync,
     trigger_checkin_for_thread,
 )
@@ -225,5 +227,40 @@ async def submit_employee_console_reply(
         reply_text=body.reply_text.strip(),
         source="web_console",
         post_to_slack=True,
+    )
+
+
+@router.post("/threads/{thread_id}/tasks/{task_id}/confirm-done")
+async def manager_confirm_done(
+    thread_id: str,
+    task_id: str,
+    auth: AuthContext = Depends(require_manager),
+) -> Dict[str, Any]:
+    """Manager-only endpoint to confirm employee task completion and close Jira ticket to Done."""
+    _verify_thread_org_access(thread_id, auth.org_id)
+    return await confirm_task_completion_by_manager(
+        org_id=auth.org_id,
+        thread_id=thread_id,
+        task_id=task_id,
+        actor=f"clerk:{auth.user_id}",
+    )
+
+
+@router.post("/threads/{thread_id}/tasks/{task_id}/reject-done")
+async def manager_reject_done(
+    thread_id: str,
+    task_id: str,
+    body: Optional[Dict[str, Any]] = None,
+    auth: AuthContext = Depends(require_manager),
+) -> Dict[str, Any]:
+    """Manager-only endpoint to reject employee task completion and request rework."""
+    _verify_thread_org_access(thread_id, auth.org_id)
+    reason = (body or {}).get("reason") or "Rework requested by Manager"
+    return await reject_task_completion_by_manager(
+        org_id=auth.org_id,
+        thread_id=thread_id,
+        task_id=task_id,
+        actor=f"clerk:{auth.user_id}",
+        reason=reason,
     )
 

@@ -16,7 +16,9 @@ from agent.graph_b import graph_b_slack
 from api.sse import sse_manager
 from connectors.sprint_loop import (
     build_default_hitl_decisions,
+    confirm_task_completion_by_manager,
     process_employee_reply,
+    reject_task_completion_by_manager,
     resume_graph_a_and_sync,
 )
 from core.config import get_settings
@@ -247,6 +249,28 @@ async def slack_interactivity(
                 media_type="application/json",
                 status_code=200,
             )
+
+        if action.get("action_id") in {"confirm_task_done", "reject_task_done"}:
+            val = str(action.get("value") or "")
+            parts = val.split(":")
+            tid = parts[0]
+            subtask_id = parts[1] if len(parts) > 1 else ""
+            snap = get_thread_snapshot(tid)
+            org_id = str((snap or {}).get("org_id") or "org_demo_horizon")
+            if action.get("action_id") == "confirm_task_done":
+                background_tasks.add_task(confirm_task_completion_by_manager, org_id, tid, subtask_id, approver)
+                return Response(
+                    content=json.dumps({"response_type": "ephemeral", "text": f"Confirmed task `{subtask_id}` as Done."}),
+                    media_type="application/json",
+                    status_code=200,
+                )
+            else:
+                background_tasks.add_task(reject_task_completion_by_manager, org_id, tid, subtask_id, approver, "Rework requested via Slack")
+                return Response(
+                    content=json.dumps({"response_type": "ephemeral", "text": f"Requested rework on task `{subtask_id}`."}),
+                    media_type="application/json",
+                    status_code=200,
+                )
 
     return Response(content=json.dumps({"status": "ignored"}), media_type="application/json", status_code=200)
 
