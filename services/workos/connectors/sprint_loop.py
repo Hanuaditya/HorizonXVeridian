@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 _SEEN_SLACK_TS: set[tuple[str, str]] = set()
 _LAST_CHANNEL_CHECK_TS: Dict[str, str] = {}
+_CHANNEL_BACKOFF: Dict[str, float] = {}
 
 
 class CheckinReplyAnalysis(BaseModel):
@@ -545,7 +546,10 @@ async def poll_slack_and_checkins_once() -> None:
     from slack_sdk import WebClient
 
     client = WebClient(token=settings.slack_bot_token)
-    for ch_id, rows in channels.items():
+    for ch_id, rows in list(channels.items())[:20]:
+        if now < _CHANNEL_BACKOFF.get(ch_id, 0.0):
+            logger.debug("Slack poller throttled on channel %s; backing off...", ch_id)
+            continue
         try:
             oldest = _LAST_CHANNEL_CHECK_TS.get(ch_id)
             kwargs: Dict[str, Any] = {"channel": ch_id, "limit": 10}
@@ -593,5 +597,11 @@ async def poll_slack_and_checkins_once() -> None:
                         slack_thread_ts=str(msg.get("thread_ts") or target_row.get("slack_thread_ts") or ts),
                     )
         except Exception as exc:
-            logger.debug("Slack poller cycle note on channel %s: %s", ch_id, exc)
+            err_str = str(exc).lower()
+            if "ratelimited" in err_str or "429" in err_str:
+                retry_after = 15.0
+                _CHANNEL_BACKOFF[ch_id] = now + min(retry_after, 60.0)
+                logger.warning("Slack poller rate-limited on channel %s: backing off for %ss", ch_id, retry_after)
+            else:
+                logger.debug("Slack poller cycle note on channel %s: %s", ch_id, exc)
 

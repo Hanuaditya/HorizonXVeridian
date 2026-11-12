@@ -171,6 +171,9 @@ async def slack_webhook(
     return Response(content=json.dumps({"status": "accepted"}), media_type="application/json", status_code=200)
 
 
+_SEEN_SLACK_INTERACTIVE_ACTIONS: set[str] = set()
+
+
 @router.post("/slack/interactivity")
 async def slack_interactivity(
     request: Request,
@@ -196,13 +199,37 @@ async def slack_interactivity(
     else:
         payload = json.loads(body_text or "{}")
 
+    # Slack deduplication guard: ignore retry deliveries with identical trigger_id
+    trigger_id = str(payload.get("trigger_id") or "").strip()
+    if trigger_id and trigger_id in _SEEN_SLACK_INTERACTIVE_ACTIONS:
+        logger.info("slack_interactivity: ignoring replayed Slack trigger_id '%s'", trigger_id)
+        return Response(
+            content=json.dumps({"status": "duplicate_ignored", "text": "Already processed."}),
+            media_type="application/json",
+            status_code=200,
+        )
+    if trigger_id:
+        _SEEN_SLACK_INTERACTIVE_ACTIONS.add(trigger_id)
+
     actions = payload.get("actions") or []
     user_info = payload.get("user") or {}
     approver = f"slack:{user_info.get('username') or user_info.get('id') or 'manager'}"
 
     for action in actions:
+        action_ts = str(action.get("action_ts") or "")
+        thread_id = str(action.get("value") or "").strip()
+        action_key = f"{thread_id}:{action_ts}"
+        if action_key in _SEEN_SLACK_INTERACTIVE_ACTIONS:
+            logger.info("slack_interactivity: ignoring replayed action_ts '%s'", action_key)
+            return Response(
+                content=json.dumps({"status": "duplicate_ignored"}),
+                media_type="application/json",
+                status_code=200,
+            )
+        if action_ts:
+            _SEEN_SLACK_INTERACTIVE_ACTIONS.add(action_key)
+
         if action.get("action_id") == "approve_sprint_tickets":
-            thread_id = str(action.get("value") or "").strip()
             snap = get_thread_snapshot(thread_id)
             if not snap:
                 raise HTTPException(status_code=404, detail=f"Thread '{thread_id}' not found.")

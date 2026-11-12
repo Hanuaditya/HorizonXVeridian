@@ -380,16 +380,34 @@ function WorkOSHubContent() {
           </div>
 
           {submitError && (
-            <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-              {submitError} — Ensure Media (5001) and WorkOS (8000) are running (`npm run demo`).
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+              <div>
+                <span className="font-semibold text-red-200">Dependency Alert:</span> {submitError}
+              </div>
+              <button
+                type="button"
+                onClick={handleRunFullSprintPreset}
+                className="rounded bg-red-500/20 px-2.5 py-1 text-[11px] font-semibold text-red-200 transition hover:bg-red-500/30"
+              >
+                Replay Recorded Demo Fixture
+              </button>
             </div>
           )}
         </div>
       )}
 
       {submitError && threadId && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-          {submitError}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+          <div>
+            <span className="font-semibold text-red-200">Execution Notice:</span> {submitError}
+          </div>
+          <button
+            type="button"
+            onClick={handleRunFullSprintPreset}
+            className="rounded bg-red-500/20 px-2.5 py-1 text-[11px] font-semibold text-red-200 transition hover:bg-red-500/30"
+          >
+            Replay Verified Fixture
+          </button>
         </div>
       )}
 
