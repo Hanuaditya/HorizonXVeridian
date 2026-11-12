@@ -1,7 +1,7 @@
-# ARCHITECTURE.md — Horizon Veridian (Unified Platform)
+﻿# ARCHITECTURE.md â€” Horizon Veridian (Unified Platform)
 
 > Source of truth for the merged project. Any IDE agent or developer must read this file before changing code.
-> If code and this document disagree, stop and ask — do not silently diverge.
+> If code and this document disagree, stop and ask â€” do not silently diverge.
 
 ---
 
@@ -29,7 +29,7 @@ One sentence: **a meeting ends, and compliant, approved work is created and trac
 | Two backends | **Keep two services** (different runtime profiles), joined by a signed contract |
 | Two Supabase usages | **One Supabase project**, one schema, tenant-scoped |
 | Auth | **Clerk** is the only identity provider; backends verify Clerk JWTs |
-| Transcription | Pluggable provider (`TRANSCRIBER`). Default sprint: **Gnani Prisma V3.0** (Hinglish/Indic diarization); WhisperX & Google STT supported as alternatives |
+| Transcription | Pluggable provider (`TRANSCRIBER`). Default sprint: **Gnani Prisma V3.0** (Hinglish/Indic diarization); Google STT supported as alternative |
 | TTS / Dubbing | Pluggable provider (`TTS_PROVIDER`). Default sprint: **Gnani Timbre**; Google Cloud TTS supported as fallback |
 | LLM model names | **Never hard-code.** All models come from env vars (`EVON_MODEL_NAME`, `LLM_EXTRACTION_MODEL`, `LLM_REASONING_MODEL`, `EMBEDDING_MODEL`) because model versions get deprecated |
 
@@ -39,42 +39,42 @@ One sentence: **a meeting ends, and compliant, approved work is created and trac
 
 ```
 horizon-veridian/
-├── ARCHITECTURE.md
-├── IMPLEMENTATION_PLAN.md
-├── AGENT_RULES.md                 # master IDE prompt (copy to .cursorrules / CLAUDE.md)
-├── docker-compose.yml
-├── .env.example                   # root template, no real secrets ever
-├── apps/
-│   └── web/                       # ONE Next.js 15 app (matching Horizon Meet)
-│       ├── app/
-│       │   ├── (auth)/            # Clerk sign-in / sign-up
-│       │   ├── (meet)/            # Horizon Meet: lobby, room, recordings, dubbing
-│       │   ├── (workos)/          # Veridian: dashboard, approvals, tracker, audit
-│       │   └── api/               # thin BFF routes only (token exchange, proxying)
-│       ├── components/{meet,workos,ui}/
-│       └── lib/{sse.ts,api-client.ts,auth.ts}
-├── services/
-│   ├── media/                     # Horizon Meet backend (Flask now, FastAPI optional later)
-│   │   ├── app.py
-│   │   ├── pipeline/{extract_audio,transcribe,translate,tts,recompose}.py
-│   │   └── publisher.py           # emits meeting-ended event to workos
-│   └── workos/                    # Veridian backend (FastAPI + LangGraph)
-│       ├── api/{main.py,sse.py,auth.py,routes/}
-│       ├── agent/{state.py,graph_a.py,graph_b.py,nodes/}
-│       ├── connectors/{sync_hr.py,sync_finance.py,sync_security.py}
-│       └── integrations/{jira.py,slack.py,github.py}
-├── packages/
-│   └── contracts/                 # SHARED schemas (single source of truth)
-│       ├── meeting_ended.schema.json
-│       ├── sse_events.schema.json
-│       └── generated/{ts,py}/     # generated types, never hand-edited
-├── db/
-│   ├── migrations/                # numbered SQL, forward-only
-│   └── seed/
-├── infra/                         # Dockerfiles, deploy configs, CI
-└── docs/
-    ├── adr/                       # architecture decision records
-    └── runbooks/
+â”œâ”€â”€ ARCHITECTURE.md
+â”œâ”€â”€ IMPLEMENTATION_PLAN.md
+â”œâ”€â”€ AGENT_RULES.md                 # master IDE prompt (copy to .cursorrules / CLAUDE.md)
+â”œâ”€â”€ docker-compose.yml
+â”œâ”€â”€ .env.example                   # root template, no real secrets ever
+â”œâ”€â”€ apps/
+â”‚   â””â”€â”€ web/                       # ONE Next.js 15 app (matching Horizon Meet)
+â”‚       â”œâ”€â”€ app/
+â”‚       â”‚   â”œâ”€â”€ (auth)/            # Clerk sign-in / sign-up
+â”‚       â”‚   â”œâ”€â”€ (meet)/            # Horizon Meet: lobby, room, recordings, dubbing
+â”‚       â”‚   â”œâ”€â”€ (workos)/          # Veridian: dashboard, approvals, tracker, audit
+â”‚       â”‚   â””â”€â”€ api/               # thin BFF routes only (token exchange, proxying)
+â”‚       â”œâ”€â”€ components/{meet,workos,ui}/
+â”‚       â””â”€â”€ lib/{sse.ts,api-client.ts,auth.ts}
+â”œâ”€â”€ services/
+â”‚   â”œâ”€â”€ media/                     # Horizon Meet backend (Flask now, FastAPI optional later)
+â”‚   â”‚   â”œâ”€â”€ app.py
+â”‚   â”‚   â”œâ”€â”€ pipeline/{extract_audio,transcribe,translate,tts,recompose}.py
+â”‚   â”‚   â””â”€â”€ publisher.py           # emits meeting-ended event to workos
+â”‚   â””â”€â”€ workos/                    # Veridian backend (FastAPI + LangGraph)
+â”‚       â”œâ”€â”€ api/{main.py,sse.py,auth.py,routes/}
+â”‚       â”œâ”€â”€ agent/{state.py,graph_a.py,graph_b.py,nodes/}
+â”‚       â”œâ”€â”€ connectors/{sync_hr.py,sync_finance.py,sync_security.py}
+â”‚       â””â”€â”€ integrations/{jira.py,slack.py,github.py}
+â”œâ”€â”€ packages/
+â”‚   â””â”€â”€ contracts/                 # SHARED schemas (single source of truth)
+â”‚       â”œâ”€â”€ meeting_ended.schema.json
+â”‚       â”œâ”€â”€ sse_events.schema.json
+â”‚       â””â”€â”€ generated/{ts,py}/     # generated types, never hand-edited
+â”œâ”€â”€ db/
+â”‚   â”œâ”€â”€ migrations/                # numbered SQL, forward-only
+â”‚   â””â”€â”€ seed/
+â”œâ”€â”€ infra/                         # Dockerfiles, deploy configs, CI
+â””â”€â”€ docs/
+    â”œâ”€â”€ adr/                       # architecture decision records
+    â””â”€â”€ runbooks/
 ```
 
 Rules:
@@ -88,22 +88,22 @@ Rules:
 
 ```
  Browser (Next.js, Clerk)
-   │  video call via Stream.io                     ┌───────────────┐
-   │                                               │  Cloudinary   │
-   ▼                                               └──────▲────────┘
-┌────────────────────────┐   recording URL    ┌──────────┴────────┐
-│ apps/web  (Meet UI +   │──────────────────► │  services/media   │
-│ WorkOS dashboard)      │                    │  WhisperX · TTS   │
-└───────▲────────────────┘                    │  dubbing · summary│
-        │ SSE (JWT)                           └──────────┬────────┘
-        │                                                │ signed POST
-        │                                                │ /api/meeting-ended
-┌───────┴──────────────────────────────────────────────▼─────────┐
-│                     services/workos (FastAPI)                   │
-│   Graph A (meeting→tasks→firewall→HITL→dispatch)                │
-│   Graph B (Slack/GitHub → intent → Jira close/escalate)         │
-└───────┬──────────────┬───────────────┬────────────────┬────────┘
-        ▼              ▼               ▼                ▼
+   â”‚  video call via Stream.io                     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+   â”‚                                               â”‚  Cloudinary   â”‚
+   â–¼                                               â””â”€â”€â”€â”€â”€â”€â–²â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   recording URL    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ apps/web  (Meet UI +   â”‚â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º â”‚  services/media   â”‚
+â”‚ WorkOS dashboard)      â”‚                    â”‚  WhisperX Â· TTS   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â–²â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                    â”‚  dubbing Â· summaryâ”‚
+        â”‚ SSE (JWT)                           â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+        â”‚                                                â”‚ signed POST
+        â”‚                                                â”‚ /api/meeting-ended
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                     services/workos (FastAPI)                   â”‚
+â”‚   Graph A (meetingâ†’tasksâ†’firewallâ†’HITLâ†’dispatch)                â”‚
+â”‚   Graph B (Slack/GitHub â†’ intent â†’ Jira close/escalate)         â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+        â–¼              â–¼               â–¼                â–¼
    Supabase+pgvector   Jira            Slack            GitHub
 ```
 
@@ -111,43 +111,43 @@ Rules:
 
 ## 4. End-to-End Flow
 
-### Phase 1 — Capture & Media (`services/media`)
+### Phase 1 â€” Capture & Media (`services/media`)
 1. Meeting ends in Stream.io; recording lands in Cloudinary (or storage bucket). Web app calls `POST /media/jobs` with `meeting_id`, `recording_url`.
-2. Pipeline: audio extraction → **WhisperX transcription + speaker diarization** → optional translation → TTS → video recomposition with timestamp alignment (drift guard).
+2. Pipeline: audio extraction â†’ **Gnani Prisma v3.0 transcription + speaker diarization** â†’ optional translation â†’ TTS â†’ video recomposition with timestamp alignment (drift guard).
 3. Gemini generates the human-readable summary (existing Horizon Meet feature).
-4. Media service stores artifacts and emits **`meeting.ended`** (see §6) to workos.
+4. Media service stores artifacts and emits **`meeting.ended`** (see Â§6) to workos.
 
-### Phase 2 — Ingestion & Extraction (Graph A start)
+### Phase 2 â€” Ingestion & Extraction (Graph A start)
 5. `POST /api/meeting-ended` (HMAC-signed). `ingest_node` does the idempotency check on `meeting_id`.
 6. `extractor_node` extracts action items: title, assignee, deadline, parameters, plus decisions and meeting context.
-7. **Speaker → employee resolution** (new, essential): diarization labels (`SPEAKER_01`) are mapped to real people via Clerk participant list → `employees` table. Unresolved assignees are flagged `UNRESOLVED_ASSIGNEE` and go to HITL, never guessed.
+7. **Speaker â†’ employee resolution** (new, essential): diarization labels (`SPEAKER_01`) are mapped to real people via Clerk participant list â†’ `employees` table. Unresolved assignees are flagged `UNRESOLVED_ASSIGNEE` and go to HITL, never guessed.
 
-### Phase 3 — Parallel Compliance Firewall (fan-out)
+### Phase 3 â€” Parallel Compliance Firewall (fan-out)
 | Node | Check | Source | Trigger |
 |---|---|---|---|
 | `hr_checker` | Assignee on leave/PTO | `hr_employees` | status in leave set |
 | `capacity_checker` | Live workload | Jira API | open tickets / story points over `CAPACITY_LIMIT` |
-| `security_checker` | Policy semantic match | `security_policies` pgvector | cosine similarity ≥ `SECURITY_THRESHOLD` (default 0.50) |
-| `finance_checker` | Unapproved spend | `finance_budgets` pgvector | similarity ≥ `FINANCE_THRESHOLD` (default 0.50) |
+| `security_checker` | Policy semantic match | `security_policies` pgvector | cosine similarity â‰¥ `SECURITY_THRESHOLD` (default 0.50) |
+| `finance_checker` | Unapproved spend | `finance_budgets` pgvector | similarity â‰¥ `FINANCE_THRESHOLD` (default 0.50) |
 
 Thresholds are env/config values, not literals. Embeddings are 1024-dim; the DB column dimension and `EMBEDDING_MODEL` must match (enforced by a startup check).
 
-### Phase 4 — Fan-in & Resolution
+### Phase 4 â€” Fan-in & Resolution
 8. `merge_node` combines results through `update_tasks_reducer` (field-level, non-None overwrite, race-safe).
-9. `capacity_checker` over-threshold → `auto_router_node` (lowest-load active employee).
+9. `capacity_checker` over-threshold â†’ `auto_router_node` (lowest-load active employee).
 10. `resolution_generator_node` proposes per task: `PROCEED | REFRAME | REROUTE | DEFER | OVERRIDE`.
 
-### Phase 5 — Human-in-the-Loop
+### Phase 5 â€” Human-in-the-Loop
 11. If any task is not `PROCEED`, `hitl_interrupt_node` pauses via the **checkpointer**.
-12. SSE streams `hitl_ready` to the manager dashboard. Manager Approve/Override → `POST /api/hitl-resume` → `Command(resume=…)` with `thread_id`.
+12. SSE streams `hitl_ready` to the manager dashboard. Manager Approve/Override â†’ `POST /api/hitl-resume` â†’ `Command(resume=â€¦)` with `thread_id`.
 13. **Checkpointer: `MemorySaver` only in local dev; `PostgresSaver` (Supabase) from Phase 4 of the plan onward.** A restart must not lose a pending approval.
 
-### Phase 6 — Dispatch
-14. `dispatcher_node` creates Jira tickets and sends Slack DMs. Must be idempotent (store `task_id → jira_key`; retries never duplicate tickets).
+### Phase 6 â€” Dispatch
+14. `dispatcher_node` creates Jira tickets and sends Slack DMs. Must be idempotent (store `task_id â†’ jira_key`; retries never duplicate tickets).
 
-### Phase 7 — Closed Loop (Graph B)
-15. **Slack webhook**: reply → intent classification `COMPLETE | PARTIAL | BLOCKED | AMBIGUOUS`. `BLOCKED` → flag Jira ticket + escalate to manager. `turn_count >= 2` → stop clarifying and escalate (anti-loop guardrail).
-16. **GitHub webhook**: commit message embedded → pgvector match against open ticket vectors (`semantic_matcher`) → if similarity ≥ `COMMIT_MATCH_THRESHOLD` and unambiguous, transition ticket to Done. Ambiguous or multiple matches → ask assignee via Slack, never auto-close.
+### Phase 7 â€” Closed Loop (Graph B)
+15. **Slack webhook**: reply â†’ intent classification `COMPLETE | PARTIAL | BLOCKED | AMBIGUOUS`. `BLOCKED` â†’ flag Jira ticket + escalate to manager. `turn_count >= 2` â†’ stop clarifying and escalate (anti-loop guardrail).
+16. **GitHub webhook**: commit message embedded â†’ pgvector match against open ticket vectors (`semantic_matcher`) â†’ if similarity â‰¥ `COMMIT_MATCH_THRESHOLD` and unambiguous, transition ticket to Done. Ambiguous or multiple matches â†’ ask assignee via Slack, never auto-close.
 17. Every transition writes to `audit_trail`.
 
 > Note: the original docs described Graph B two ways (intent-parser vs semantic-matcher). The unified design uses **both**: Slack events go through intent parsing; GitHub events go through semantic matching, and both feed the same `ticket_resolver`.
@@ -172,7 +172,7 @@ All tenant tables carry `org_id` and have **Row Level Security** enabled.
 | `tasks` | new | persisted task state: assignee, status, flags, jira_key, vector |
 | `resolutions`, `approvals` | new | AI proposals and manager decisions (who/when) |
 | `audit_trail` | Veridian | append-only, with `provenance_tag` |
-| `slack_threads` | new | ticket ↔ Slack thread, `turn_count` |
+| `slack_threads` | new | ticket â†” Slack thread, `turn_count` |
 
 Migrations are numbered, forward-only, and reviewed. Never edit an applied migration.
 
@@ -180,7 +180,7 @@ Migrations are numbered, forward-only, and reviewed. Never edit an applied migra
 
 ## 6. Contracts (packages/contracts)
 
-### 6.1 `meeting.ended` — media → workos
+### 6.1 `meeting.ended` â€” media â†’ workos
 `POST {WORKOS_URL}/api/meeting-ended`
 
 Headers: `X-Signature: sha256=<HMAC(body, SHARED_SECRET)>`, `X-Timestamp` (reject if older than 5 min), `Idempotency-Key: <meeting_id>`.
@@ -201,9 +201,9 @@ Headers: `X-Signature: sha256=<HMAC(body, SHARED_SECRET)>`, `X-Timestamp` (rejec
 ```
 Response: `202 { "thread_id": "string" }`.
 
-### 6.2 SSE events — workos → web
+### 6.2 SSE events â€” workos â†’ web
 Envelope `{ "event_type": "...", "payload": {...} }`.
-Events: `processing_started · resolution_ready · hitl_ready · dispatched · tracker_update · complete · error`.
+Events: `processing_started Â· resolution_ready Â· hitl_ready Â· dispatched Â· tracker_update Â· complete Â· error`.
 `tracker_update` is new (Graph B progress, so the dashboard shows closure live).
 
 ### 6.3 Public API (workos)
@@ -221,7 +221,7 @@ Events: `processing_started · resolution_ready · hitl_ready · dispatched · t
 ## 7. Security Requirements (non-negotiable)
 
 1. Verify Slack signing secret and GitHub HMAC on every webhook, constant-time compare.
-2. HMAC + timestamp on media→workos calls (replay protection).
+2. HMAC + timestamp on mediaâ†’workos calls (replay protection).
 3. Clerk JWT verification in FastAPI (JWKS), org check on every SSE and HITL call. `thread_id` alone is never authorization.
 4. Only users with manager role can approve; record approver in `approvals`.
 5. Prompt-injection hygiene: transcript text and commit messages are **untrusted data**. They are passed to LLMs as delimited data, LLM output is schema-validated (Pydantic), and LLM output can never directly choose a Jira project, Slack channel, or URL.
@@ -245,7 +245,7 @@ Events: `processing_started · resolution_ready · hitl_ready · dispatched · t
 
 - LangSmith tracing for both graphs (toggle by env).
 - Structured JSON logs with `meeting_id`, `thread_id`, `org_id`, `task_id` correlation fields.
-- Metrics: meeting→dispatch latency, flags per firewall node, approval time, auto-close precision (manual corrections / auto-closes).
+- Metrics: meetingâ†’dispatch latency, flags per firewall node, approval time, auto-close precision (manual corrections / auto-closes).
 
 ---
 
@@ -256,7 +256,7 @@ Events: `processing_started · resolution_ready · hitl_ready · dispatched · t
 | Unit | reducer, thresholds, intent classification parsing, signature verification |
 | Graph | each node with fixtures; full Graph A with mocked Jira/Slack/LLM |
 | Contract | JSON-schema validation of every cross-service payload in CI |
-| E2E | Playwright: transcript → dashboard → approve → ticket mocked |
+| E2E | Playwright: transcript â†’ dashboard â†’ approve â†’ ticket mocked |
 | Eval | golden transcripts (the GitLab demo + 5 more) with expected flags; track extraction precision/recall |
 
 Definition of done for any task: tests pass, contract unchanged or versioned, `ARCHITECTURE.md` updated if behavior changed.

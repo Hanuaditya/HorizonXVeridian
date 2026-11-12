@@ -124,6 +124,10 @@ def get_embedding(text: str, dim: Optional[int] = None) -> List[float]:
                     raise ValueError(
                         f"Embedding provider returned {len(emb)} dims, expected {target_dim}"
                     )
+                logger.info(
+                    "[EMBED] provider=nvidia model=%s dim=%d",
+                    settings.embedding_model, len(emb),
+                )
                 return emb
         except Exception as exc:
             if not settings.demo_mode:

@@ -1,6 +1,6 @@
-# Horizon Veridian
+﻿# Horizon Veridian
 
-[![CI](https://github.com/horizon-veridian/horizon-veridian/actions/workflows/ci.yml/badge.svg)](https://github.com/horizon-veridian/horizon-veridian/actions/workflows/ci.yml)
+[![CI](https://github.com/Hanuaditya/HorizonXVeridian/actions/workflows/ci.yml/badge.svg)](https://github.com/Hanuaditya/HorizonXVeridian/actions/workflows/ci.yml)
 
 > **Horizon Veridian** unites real-time AI-powered video meetings, multilingual dubbing, and automated post-meeting workflow execution into a single, cohesive platform.
 
@@ -12,16 +12,16 @@ Horizon Veridian is organized as a clean polyglot monorepo:
 
 ```
 horizon-veridian/
-├── apps/
-│   └── web/                 # Next.js 15 frontend (Clerk auth, Stream video, WorkOS approval inbox)
-├── services/
-│   ├── media/               # Python Flask microservice (diarization, dubbing, STT/TTS)
-│   └── workos/              # Python FastAPI microservice (LangGraph task extraction, compliance, dispatch)
-├── packages/
-│   └── contracts/           # Cross-service JSON schemas and typed TypeScript/Python generators
-├── legacy/                  # Archived reference codebases (horizon-meet, veridian)
-├── docker-compose.yml       # Local container orchestration
-└── .env.example             # Monorepo environment configuration template
+â”œâ”€â”€ apps/
+â”‚   â””â”€â”€ web/                 # Next.js 15 frontend (Clerk auth, Stream video, WorkOS approval inbox)
+â”œâ”€â”€ services/
+â”‚   â”œâ”€â”€ media/               # Python Flask microservice (diarization, dubbing, STT/TTS)
+â”‚   â””â”€â”€ workos/              # Python FastAPI microservice (LangGraph task extraction, compliance, dispatch)
+â”œâ”€â”€ packages/
+â”‚   â””â”€â”€ contracts/           # Cross-service JSON schemas and typed TypeScript/Python generators
+â”œâ”€â”€ legacy/                  # Archived reference codebases (horizon-meet, veridian)
+â”œâ”€â”€ docker-compose.yml       # Local container orchestration
+â””â”€â”€ .env.example             # Monorepo environment configuration template
 ```
 
 For full system architecture, state machines, and ADRs, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).  
@@ -119,9 +119,9 @@ Contracts between services are strictly typed using JSON Schemas under `packages
   ```
 
 ### Unified Web Routes
-- `/workos`: Live Gnani Evon 30B × Veridian WorkOS Compliance Hub & HITL Approval Center
+- `/workos`: Live Gnani Evon 30B Ã— Veridian WorkOS Compliance Hub & HITL Approval Center
 - `/meetings` & `/meetings/[id]`: Unified Meeting Hub & Detail Dossier (Gnani Prisma STT + Timbre Dubbing + Tasks)
-- `/admin`: Clerk ↔ Slack ↔ Jira Identity Mappings, Config Thresholds & Connector Sync
+- `/admin`: Clerk â†” Slack â†” Jira Identity Mappings, Config Thresholds & Connector Sync
 - `/`, `/upcoming`, `/previous`, `/recordings`, `/insights`, `/personal-room`: Horizon Meet Rooms & Recordings
 
 ---

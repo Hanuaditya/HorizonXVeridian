@@ -6,6 +6,7 @@ import io
 import logging
 import math
 import struct
+import uuid
 import wave
 from typing import Any, Dict, List, Optional
 
@@ -174,6 +175,11 @@ class GnaniVoiceEngine:
                 return _demo_prisma_response()
             raise EnvironmentError("GNANI_API_KEY is required when DEMO_MODE=false.")
 
+        req_id = uuid.uuid4().hex[:8]
+        logger.info(
+            "[GNANI-STT] provider=gnani_prisma model=%s req_id=%s",
+            self.prisma_model, req_id,
+        )
         with open(audio_file_path, "rb") as audio:
             files = {"audio_file": audio}
             data = {
@@ -218,6 +224,11 @@ class GnaniVoiceEngine:
                 return _generate_demo_wav_bytes(duration_sec=est_duration)
             raise EnvironmentError("GNANI_API_KEY is required when DEMO_MODE=false.")
 
+        req_id = uuid.uuid4().hex[:8]
+        logger.info(
+            "[GNANI-TTS] provider=gnani_timbre model=%s voice=%s req_id=%s",
+            self.timbre_model, chosen_voice, req_id,
+        )
         payload = {
             "model": self.timbre_model,
             "text": text,
