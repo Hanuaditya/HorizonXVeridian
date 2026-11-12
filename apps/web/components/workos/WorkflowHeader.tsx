@@ -9,6 +9,8 @@ interface WorkflowHeaderProps {
   meetingId?: string | null;
   threadId?: string | null;
   steps: StepItem[];
+  simulating?: boolean;
+  onRunSimulation?: () => void;
   onReset?: () => void;
 }
 
@@ -29,6 +31,8 @@ export default function WorkflowHeader({
   meetingId,
   threadId,
   steps,
+  simulating = false,
+  onRunSimulation,
   onReset,
 }: WorkflowHeaderProps) {
   const badge = PHASE_BADGE[phase] ?? PHASE_BADGE.IDLE;
@@ -48,21 +52,33 @@ export default function WorkflowHeader({
               </span>
             </div>
             <p className="mt-0.5 text-xs text-white/50">
-              {meetingId ? `Meeting: ${meetingId}` : 'No active pipeline run'}
+              {meetingId ? `Meeting: ${meetingId}` : 'Ready for Media -> WorkOS Hinglish Demo'}
               {threadId ? ` · Thread: ${threadId}` : ''}
             </p>
           </div>
         </div>
 
-        {onReset && (
-          <button
-            type="button"
-            onClick={onReset}
-            className="rounded-lg border border-white/15 bg-dark-3 px-3.5 py-2 text-xs font-medium text-white/80 transition hover:bg-white/10"
-          >
-            New Run
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {onRunSimulation && (
+            <button
+              type="button"
+              disabled={simulating}
+              onClick={onRunSimulation}
+              className="rounded-lg bg-gradient-to-r from-purple-600 to-blue-1 px-4 py-2 text-xs font-bold text-white shadow transition hover:opacity-95 disabled:opacity-50"
+            >
+              {simulating ? 'Sending Media -> WorkOS...' : '▶ Run Hinglish Demo Simulation'}
+            </button>
+          )}
+          {onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="rounded-lg border border-white/15 bg-dark-3 px-3.5 py-2 text-xs font-medium text-white/80 transition hover:bg-white/10"
+            >
+              Reset
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">

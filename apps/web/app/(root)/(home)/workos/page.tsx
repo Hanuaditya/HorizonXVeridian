@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '@clerk/nextjs';
+import { useAppAuth } from '@/providers/AuthBridge';
 import { useAgentStream, useHITLResume } from '@/lib/sse';
 import type { WorkOSAuditEntry, WorkOSThreadState } from '@/lib/workos-types';
 import WorkflowHeader from '@/components/workos/WorkflowHeader';
@@ -20,25 +20,18 @@ const GOLDEN_HINGLISH_TRANSCRIPT = `[00:00 - Dov]: Team, welcome. We have three 
 [02:00 - Dov]: Theek hai, let's have the AI platform check our policies, route it to the right person, and create the tickets. Meeting adjourned!`;
 
 export default function WorkOSHubPage() {
-  const { has } = useAuth();
+  const { isManager, orgId } = useAppAuth();
   const [threadId, setThreadId] = useState<string | null>(null);
   const [recentThreads, setRecentThreads] = useState<WorkOSThreadState[]>([]);
   const [transcript, setTranscript] = useState<string>(GOLDEN_HINGLISH_TRANSCRIPT);
   const [meetingTitle, setMeetingTitle] = useState<string>('Q4 Hinglish Sprint Sync (Gnani Demo)');
   const [submitting, setSubmitting] = useState(false);
+  const [simulating, setSimulating] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [auditEntries, setAuditEntries] = useState<WorkOSAuditEntry[]>([]);
 
   const { agentState, phase, steps, streamError } = useAgentStream(threadId);
   const { resume, resuming, resumeError } = useHITLResume();
-
-  const hasRealClerk = Boolean(
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
-      !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.startsWith('pk_test_ZXhh')
-  );
-  const isManager = hasRealClerk
-    ? Boolean(has?.({ role: 'org:admin' }))
-    : process.env.NEXT_PUBLIC_DEMO_MODE !== 'false';
 
   useEffect(() => {
     const loadRecent = async () => {
@@ -73,6 +66,30 @@ export default function WorkOSHubPage() {
     };
     loadAudit();
   }, [agentState.meeting_id, phase]);
+
+  const handleRunSimulation = async () => {
+    setSimulating(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch('/api/media/demo-simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          org_id: orgId || 'org_demo_horizon',
+          title: meetingTitle,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.thread_id) {
+        throw new Error(data.error || data.detail || `Media simulation failed (${res.status})`);
+      }
+      setThreadId(data.thread_id);
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to run Media -> WorkOS simulation');
+    } finally {
+      setSimulating(false);
+    }
+  };
 
   const handleRunPipeline = async () => {
     setSubmitting(true);
@@ -113,6 +130,8 @@ export default function WorkOSHubPage() {
         meetingId={agentState.meeting_id}
         threadId={threadId}
         steps={steps}
+        simulating={simulating}
+        onRunSimulation={handleRunSimulation}
         onReset={threadId ? handleReset : undefined}
       />
 
@@ -121,11 +140,12 @@ export default function WorkOSHubPage() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-bold text-white">
-                Run Meeting Intelligence & Compliance Firewall
+                Custom Transcript Runner & Golden Hinglish Scenario
               </h2>
               <p className="mt-1 text-xs text-white/60">
-                Preloaded with the Gnani Prisma V3.0 code-mixed Hinglish transcript testing HR Leave,
-                SEC-POL-089 (14-day staging rule), and ₹0 Compute Budget guardrails.
+                Click <span className="font-semibold text-purple-300">▶ Run Hinglish Demo Simulation</span>{' '}
+                above to trigger the full Media (5001) → Signed `meeting.ended` → WorkOS (8000) SSE
+                pipeline, or submit custom text below.
               </p>
             </div>
             <button
@@ -134,7 +154,7 @@ export default function WorkOSHubPage() {
               onClick={handleRunPipeline}
               className="rounded-lg bg-blue-1 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-600 disabled:opacity-50"
             >
-              {submitting ? 'Starting Graph A...' : 'Run Gnani × WorkOS Pipeline'}
+              {submitting ? 'Starting Graph A...' : 'Run Transcript Directly'}
             </button>
           </div>
 
@@ -167,7 +187,7 @@ export default function WorkOSHubPage() {
               <div className="mt-3 flex-1 space-y-2 overflow-y-auto">
                 {recentThreads.length === 0 ? (
                   <p className="text-xs text-white/40">
-                    No previous runs in this session. Start the golden demo to stream live SSE events.
+                    No previous runs in this session. Start the simulation above to stream live SSE events.
                   </p>
                 ) : (
                   recentThreads.map((t) => (
@@ -193,9 +213,15 @@ export default function WorkOSHubPage() {
 
           {submitError && (
             <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-              {submitError} — Ensure WorkOS FastAPI is running on port 8000 (`uvicorn api.main:app --port 8000`).
+              {submitError} — Ensure Media (5001) and WorkOS (8000) are running (`npm run demo`).
             </div>
           )}
+        </div>
+      )}
+
+      {submitError && threadId && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+          {submitError}
         </div>
       )}
 

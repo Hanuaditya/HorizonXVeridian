@@ -59,3 +59,4 @@ export async function getWorkOSAuthHeader(): Promise<{
 
   throw new Error('Unauthorized: Clerk authentication session required.');
 }
+

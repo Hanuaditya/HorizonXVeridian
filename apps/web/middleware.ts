@@ -19,9 +19,10 @@ const hasRealClerk = Boolean(
 );
 
 const isDevDemoBypass =
-  !hasRealClerk &&
   process.env.NODE_ENV !== 'production' &&
-  (process.env.DEMO_MODE === 'true' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true');
+  (process.env.DEMO_MODE === 'true' ||
+    process.env.NEXT_PUBLIC_DEMO_MODE === 'true' ||
+    !hasRealClerk);
 
 export default isDevDemoBypass
   ? function demoMiddleware() {

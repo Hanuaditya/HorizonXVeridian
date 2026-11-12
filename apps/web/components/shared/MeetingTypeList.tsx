@@ -4,7 +4,7 @@ import React, { Children, useState } from 'react';
 import HomeCard from './HomeCard';
 import { useRouter } from 'next/navigation';
 import MeetingModal from './MeetingModal';
-import { useUser } from '@clerk/nextjs';
+import { useAppUser } from '@/providers/AuthBridge';
 import { Call, useStreamVideoClient } from '@stream-io/video-react-sdk';
 import { useToast } from '@/components/ui/use-toast';
 import { Textarea } from '../ui/textarea';
@@ -17,7 +17,7 @@ const MeetingTypeList = () => {
     'isScheduleMeeting' | 'isJoiningMeeting' | 'isInstantMeeting' | undefined
   >();
 
-  const { user } = useUser();
+  const { user } = useAppUser();
   const client = useStreamVideoClient();
   const [values, setValues] = useState({
     dateTime: new Date(),
@@ -28,7 +28,14 @@ const MeetingTypeList = () => {
   const { toast } = useToast();
 
   const createMeeting = async () => {
-    if (!client || !user) return;
+    if (!client || !user) {
+      toast({
+        title: 'Demo Mode: Stream video keys not configured',
+        description: 'Routing to Unified Meetings Hub to run offline Hinglish demo.',
+      });
+      router.push('/meetings');
+      return;
+    }
     try {
       if (!values.dateTime) {
         toast({

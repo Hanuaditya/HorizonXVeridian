@@ -8,6 +8,8 @@
   ],
   "scripts": {
     "dev": "npm --prefix apps/web run dev",
+    "demo": "node scripts/run_demo.mjs",
+    "verify-keys": "python scripts/verify_keys.py",
     "build": "npm --prefix apps/web run build",
     "lint": "npm --prefix apps/web run lint",
     "type-check": "npm --prefix apps/web run type-check",

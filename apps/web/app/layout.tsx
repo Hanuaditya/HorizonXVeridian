@@ -1,56 +1,34 @@
-import { ReactNode } from "react";
-import type { Metadata } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
-import { Inter } from "next/font/google";
+import { ReactNode } from 'react';
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 
-import "@stream-io/video-react-sdk/dist/css/styles.css";
-import "react-datepicker/dist/react-datepicker.css";
-import "./globals.css";
+import '@stream-io/video-react-sdk/dist/css/styles.css';
+import 'react-datepicker/dist/react-datepicker.css';
+import './globals.css';
 
-import { Providers } from "../providers/providers";
+import { Providers } from '../providers/providers';
+import { AppAuthProvider } from '../providers/AuthBridge';
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "HorizonMeet", // ✅ Change from "YOOM" to this
-  description: "AI-Powered Video Dubbing Platform",
+  title: 'Horizon Veridian',
+  description: 'Sovereign Indic Voice & Agentic WorkOS Platform',
   icons: {
-    icon: "/icons/logo.svg",
+    icon: '/icons/logo.svg',
   },
 };
-
-const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-if (!clerkPublishableKey && process.env.NODE_ENV === 'production' && process.env.NEXT_PHASE !== 'phase-production-build') {
-  throw new Error('FATAL [Horizon Veridian]: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required in production runtime.');
-}
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en">
-      <ClerkProvider
-        publishableKey={clerkPublishableKey || 'pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk'}
-
-        appearance={{
-
-          layout: {
-            socialButtonsVariant: "iconButton",
-            logoImageUrl: "/icons/logo.svg",
-          },
-          variables: {
-            colorText: "#fff",
-            colorPrimary: "#0E78F9",
-            colorBackground: "#1C1F2E",
-            colorInputBackground: "#252A41",
-            colorInputText: "#fff",
-          },
-        }}
-      >
+      <AppAuthProvider>
         <body className={`${inter.className} bg-dark-2`}>
           <Providers>{children}</Providers>
         </body>
-      </ClerkProvider>
+      </AppAuthProvider>
     </html>
   );
 }

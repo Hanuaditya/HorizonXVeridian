@@ -106,3 +106,4 @@ export interface WorkOSAuditEntry {
   actor_id?: string | null;
   created_at: string;
 }
+

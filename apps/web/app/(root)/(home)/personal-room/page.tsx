@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useGetCallById } from '@/hooks/useGetCallById';
-import { useUser } from '@clerk/nextjs';
+import { useAppUser } from '@/providers/AuthBridge';
 import { useStreamVideoClient } from '@stream-io/video-react-sdk';
 import { useRouter } from 'next/navigation';
 import React from 'react';
@@ -26,16 +26,24 @@ const Table = ({
 );
 
 const PersonalRoom = () => {
-  const { user } = useUser();
-  const meetingId = user?.id;
-  const meetingLink = `${process.env.NEXT_PUBLIC_BASE_URL}/meeting/${meetingId}?personal=true`;
+  const { user } = useAppUser();
+  const meetingId = user?.id || 'demo-personal-room';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const meetingLink = `${baseUrl}/meeting/${meetingId}?personal=true`;
   const { toast } = useToast();
-  const { call } = useGetCallById(meetingId!);
+  const { call } = useGetCallById(meetingId);
   const client = useStreamVideoClient();
   const router = useRouter();
 
   const startRoom = async () => {
-    if (!client || !user) return;
+    if (!client || !user) {
+      toast({
+        title: 'Demo Mode Active',
+        description: 'Add Stream API keys in .env for live video streaming. Opening Meetings Hub.',
+      });
+      router.push('/meetings');
+      return;
+    }
 
     const newCall = client.call('default', meetingId!);
 

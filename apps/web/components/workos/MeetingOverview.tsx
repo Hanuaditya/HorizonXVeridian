@@ -77,3 +77,4 @@ export default function MeetingOverview({ meetingContext, phase }: MeetingOvervi
     </div>
   );
 }
+
