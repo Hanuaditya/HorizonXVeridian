@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext } from 'react';
 import Link from 'next/link';
+import { hasRealClerkKey, isDemoModeEnabled } from '@/lib/env-flags';
 import {
   ClerkProvider,
   CreateOrganization,
@@ -53,18 +54,7 @@ const DEFAULT_DEMO_CONTEXT: AppAuthValue = {
 
 const AppAuthContext = createContext<AppAuthValue>(DEFAULT_DEMO_CONTEXT);
 
-export function hasRealClerkKey(): boolean {
-  const key = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
-  return Boolean(
-    key &&
-      !key.startsWith('pk_test_ZXhh') &&
-      !key.includes('placeholder')
-  );
-}
-
-export function isDemoModeEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
-}
+export { hasRealClerkKey, isDemoModeEnabled };
 
 function ClerkAuthSync({ children }: { children: React.ReactNode }) {
   const { user, isLoaded } = useClerkUser();

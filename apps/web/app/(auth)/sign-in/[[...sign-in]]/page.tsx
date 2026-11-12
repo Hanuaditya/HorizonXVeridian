@@ -1,7 +1,7 @@
 import { SignIn } from '@clerk/nextjs';
 import Link from 'next/link';
 import React from 'react';
-import { hasRealClerkKey } from '@/providers/AuthBridge';
+import { hasRealClerkKey } from '@/lib/env-flags';
 
 const SignInPage = () => {
   if (!hasRealClerkKey()) {

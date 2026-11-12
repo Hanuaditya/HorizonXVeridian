@@ -126,10 +126,14 @@ for (const proc of processes) {
 async function checkUrl(url) {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1500);
-    const res = await fetch(url, { signal: controller.signal });
+    const timer = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: 'text/html,application/json' },
+      redirect: 'manual',
+    });
     clearTimeout(timer);
-    return res.ok;
+    return res.status >= 200 && res.status < 400;
   } catch {
     return false;
   }
@@ -139,7 +143,7 @@ async function checkUrl(url) {
   const targets = [
     'http://localhost:5001/health',
     'http://localhost:8000/health',
-    'http://localhost:3000',
+    'http://localhost:3000/sign-in',
   ];
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 1500));
