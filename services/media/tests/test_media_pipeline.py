@@ -66,9 +66,25 @@ def test_gnani_voice_engine_live_http_mock(tmp_path, monkeypatch):
     monkeypatch.setattr("pipeline.gnani_client.requests.post", fake_post)
     engine = GnaniVoiceEngine()
     out = engine.transcribe_audio(str(wav_file))
-    assert captured["url"].endswith("/transcribe")
-    assert captured["data"]["model"] == "Gnani Prisma V3.0"
+    assert captured["url"].endswith("/stt/v3")
+    assert captured["headers"]["X-API-Key-ID"] == "gnani_live_test_key"
+    assert captured["data"]["model"] == "prisma-v3.0"
     assert out["segments"][0]["text"] == "Jason leave pe hai"
+
+
+def test_media_demo_simulate_route(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEDIA_TEMP_DIR", str(tmp_path / "sim_tmp"))
+    monkeypatch.setenv("SUPABASE_URL", "")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    monkeypatch.setenv("GNANI_API_KEY", "")
+    from app import app as media_app
+    monkeypatch.setattr(
+        "pipeline.dubber.publish_meeting_ended",
+        lambda payload: {"status": "accepted", "thread_id": f"thr-{payload.meeting_id}"},
+    )
+    sim_res = media_app.test_client().post("/media/demo-simulate", json={})
+    assert sim_res.status_code == 202
+    assert sim_res.get_json()["status"] == "dispatched_to_workos"
 
 
 def test_transcriber_factory_and_strict_speaker_attribution(monkeypatch):
@@ -194,3 +210,4 @@ def test_flask_media_routes_async_and_legacy(tmp_path, monkeypatch):
         time.sleep(0.05)
     assert poll["status"] == "COMPLETED"
     assert poll["org_id"] == "org_alpha"
+

@@ -73,3 +73,4 @@ def extract_audio(video_path: str, audio_path: str) -> tuple[str, float]:
         raise RuntimeError(
             "moviepy is required for audio extraction when not running with WAV/DEMO_MODE."
         ) from exc
+

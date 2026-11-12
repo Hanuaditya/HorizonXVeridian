@@ -66,3 +66,4 @@ def semantic_matcher_node(state: AgentState) -> dict:
         "intent_reason": f"Unambiguous commit match to {top.get('jira_key') or top.get('task_id')}",
         "tracker_task_id": top.get("task_id"),
     }
+

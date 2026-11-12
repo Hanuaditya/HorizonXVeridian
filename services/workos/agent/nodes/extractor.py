@@ -106,3 +106,4 @@ def extractor_node(state: AgentState) -> dict:
         "key_decisions": decisions,
         "meeting_context": parsed.meeting_context.model_dump(),
     }
+

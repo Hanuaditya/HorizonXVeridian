@@ -188,3 +188,4 @@ def resolution_generator_node(state: AgentState) -> dict:
         "tasks": task_updates,
         "resolutions": resolutions,
     }
+

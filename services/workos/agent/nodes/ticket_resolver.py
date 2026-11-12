@@ -113,3 +113,4 @@ def escalation_node(state: AgentState) -> dict:
         "updated_at": datetime.now(timezone.utc).isoformat(),
     })
     return {"tracker_updates": updates_list}
+

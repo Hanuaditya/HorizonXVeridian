@@ -44,3 +44,4 @@ def translate_segments(
             logger.debug("translate_segments fallback for segment: %s", exc)
             translated.append(seg.text)
     return translated
+

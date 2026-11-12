@@ -120,13 +120,14 @@ def get_embedding(text: str, dim: Optional[int] = None) -> List[float]:
                 return emb
         except Exception as exc:
             if not settings.demo_mode:
-                raise
-            logger.warning(
-                "Live embedding call failed (%s); falling back to deterministic embedding in DEMO_MODE.",
-                exc,
-            )
-
-    if not _is_real_key(settings.nvidia_api_key) and not settings.demo_mode:
-        raise EnvironmentError("NVIDIA_API_KEY is required when DEMO_MODE=false.")
+                logger.warning(
+                    "Live NVIDIA embedding call failed (%s); falling back to deterministic 1024-dim embedder.",
+                    exc,
+                )
+            else:
+                logger.warning(
+                    "Live embedding call failed (%s); falling back to deterministic embedding in DEMO_MODE.",
+                    exc,
+                )
 
     return deterministic_semantic_embedding(text, dim=target_dim)

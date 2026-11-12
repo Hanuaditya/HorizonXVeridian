@@ -59,8 +59,10 @@ class LocalDemoStore:
             self.slack_threads: List[Dict[str, Any]] = []
             self.webhook_events: set[tuple[str, str]] = set()
             self.thread_states: Dict[str, Dict[str, Any]] = {}
+            self._seeded = False
             if seed_default_org:
                 self._seed_org("org_demo_horizon")
+                self._seeded = True
 
     def _seed_org(self, org_id: str) -> None:
         settings = get_settings()

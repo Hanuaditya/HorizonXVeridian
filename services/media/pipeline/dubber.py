@@ -76,11 +76,15 @@ def process_media_job(
     raw_video = str(work_dir / "input.mp4")
     audio_path = str(work_dir / "audio.wav")
 
+    is_demo_url = video_url.startswith("demo://")
     download_video(video_url, raw_video)
     _, duration_sec = extract_audio(raw_video, audio_path)
 
     transcriber = get_transcriber()
-    t_res = transcriber.transcribe(audio_path, language_hint=language_hint)
+    try:
+        t_res = transcriber.transcribe(audio_path, language_hint=language_hint, force_demo=is_demo_url)
+    except TypeError:
+        t_res = transcriber.transcribe(audio_path, language_hint=language_hint)
 
     participant_objs = [Participant(**p) for p in (participants or [])]
     attributed_segments = resolve_speaker_user_ids(
@@ -92,7 +96,7 @@ def process_media_job(
 
     summary, chapters = generate_summary_and_chapters(
         attributed_segments,
-        force_demo=video_url.startswith("demo://"),
+        force_demo=is_demo_url,
     )
 
     dubbed_url = ""
@@ -105,6 +109,7 @@ def process_media_job(
             video_duration=max(duration_sec, 10.0),
             output_audio_path=dubbed_audio,
             target_lang=target_lang,
+            force_demo=is_demo_url,
         )
         final_video = str(work_dir / "final_dubbed.mp4")
         create_final_video(raw_video, dubbed_audio, final_video, expected_duration=duration_sec)

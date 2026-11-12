@@ -75,3 +75,4 @@ class MediaJobManager:
 
 
 job_manager = MediaJobManager()
+

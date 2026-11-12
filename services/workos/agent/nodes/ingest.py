@@ -52,3 +52,4 @@ def ingest_node(state: AgentState) -> dict:
         "org_id": org_id,
         "transcript": transcript_text,
     }
+

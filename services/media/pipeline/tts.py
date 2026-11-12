@@ -46,6 +46,7 @@ def synthesize_dubbed_track(
     video_duration: float,
     output_audio_path: str,
     target_lang: str = "en",
+    force_demo: bool = False,
 ) -> str:
     """Synthesize aligned dubbed audio track using Gnani Timbre or Google TTS."""
     settings = get_media_settings()
@@ -66,7 +67,12 @@ def synthesize_dubbed_track(
             rate = compute_bounded_speaking_rate(len(text.split()), slot_dur)
 
             if provider == "gnani_timbre" and engine is not None:
-                audio_bytes = engine.synthesize_speech(text=text, target_lang=target_lang, speed=rate)
+                audio_bytes = engine.synthesize_speech(
+                    text=text,
+                    target_lang=target_lang,
+                    speed=rate,
+                    force_demo=force_demo,
+                )
                 seg_audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
             else:
                 from google.cloud import texttospeech  # type: ignore
@@ -103,7 +109,12 @@ def synthesize_dubbed_track(
             slot_dur = max(slot_end - seg.start, 1.0)
             rate = compute_bounded_speaking_rate(len(text.split()), slot_dur)
             if engine is not None:
-                wav_bytes = engine.synthesize_speech(text=text, target_lang=target_lang, speed=rate)
+                wav_bytes = engine.synthesize_speech(
+                    text=text,
+                    target_lang=target_lang,
+                    speed=rate,
+                    force_demo=force_demo,
+                )
                 with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
                     pcm = wf.readframes(wf.getnframes())
                 start_byte = min(len(combined), int(seg.start * sample_rate) * 2)
@@ -117,3 +128,4 @@ def synthesize_dubbed_track(
             out_wf.setframerate(sample_rate)
             out_wf.writeframes(bytes(combined))
         return output_audio_path
+

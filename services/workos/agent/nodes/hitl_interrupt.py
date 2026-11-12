@@ -39,3 +39,4 @@ def hitl_interrupt_node(state: AgentState) -> dict:
         "approver_user_id": approver_user_id,
         "manager_approved": True,
     }
+

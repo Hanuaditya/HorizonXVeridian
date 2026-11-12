@@ -31,9 +31,11 @@ class MediaSettings:
     # Gnani AI
     gnani_api_key: str
     gnani_token: str
+    gnani_base_url: str
     gnani_stt_endpoint: str
     gnani_tts_endpoint: str
     gnani_prisma_model: str
+    gnani_timbre_model: str
     gnani_timbre_voice: str
 
     # Gemini / Summaries
@@ -52,25 +54,34 @@ class MediaSettings:
 
 
 def get_media_settings() -> MediaSettings:
+    app_env = os.getenv("APP_ENV", "development").strip()
+    demo_mode = _as_bool(os.getenv("DEMO_MODE"), default=True)
+    hmac_secret = os.getenv("SHARED_HMAC_SECRET", "").strip()
+    if not hmac_secret and demo_mode and app_env == "development":
+        hmac_secret = "horizon_veridian_demo_hmac_secret_min_32_bytes_2026"
+
     supa_key = (
         os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         or os.getenv("SUPABASE_KEY")
         or ""
     ).strip()
+    gnani_base = os.getenv("GNANI_BASE_URL", "https://api.vachana.ai").strip().rstrip("/")
     return MediaSettings(
-        app_env=os.getenv("APP_ENV", "development").strip(),
-        demo_mode=_as_bool(os.getenv("DEMO_MODE"), default=True),
+        app_env=app_env,
+        demo_mode=demo_mode,
         media_port=int(os.getenv("MEDIA_PORT", "5001")),
         workos_url=os.getenv("WORKOS_URL", "http://localhost:8000").strip(),
-        shared_hmac_secret=os.getenv("SHARED_HMAC_SECRET", "").strip(),
+        shared_hmac_secret=hmac_secret,
         transcriber=os.getenv("TRANSCRIBER", "gnani_prisma").strip().lower(),
         tts_provider=os.getenv("TTS_PROVIDER", "gnani_timbre").strip().lower(),
         whisperx_model=os.getenv("WHISPERX_MODEL", "small").strip(),
         gnani_api_key=os.getenv("GNANI_API_KEY", "").strip(),
         gnani_token=os.getenv("GNANI_TOKEN", "").strip(),
-        gnani_stt_endpoint=os.getenv("GNANI_STT_ENDPOINT", "https://api.gnani.ai/speech-to-text/v3").strip(),
-        gnani_tts_endpoint=os.getenv("GNANI_TTS_ENDPOINT", "https://api.gnani.ai/text-to-speech/v1").strip(),
-        gnani_prisma_model=os.getenv("GNANI_PRISMA_MODEL", "Gnani Prisma V3.0").strip(),
+        gnani_base_url=gnani_base,
+        gnani_stt_endpoint=os.getenv("GNANI_STT_ENDPOINT", f"{gnani_base}/stt/v3").strip(),
+        gnani_tts_endpoint=os.getenv("GNANI_TTS_ENDPOINT", f"{gnani_base}/api/v1/tts/inference").strip(),
+        gnani_prisma_model=os.getenv("GNANI_PRISMA_MODEL", "prisma-v3.0").strip(),
+        gnani_timbre_model=os.getenv("GNANI_TIMBRE_MODEL", "timbre-v2.5").strip(),
         gnani_timbre_voice=os.getenv("GNANI_TIMBRE_VOICE", "indic-male-default").strip(),
         gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
         llm_extraction_model=os.getenv("LLM_EXTRACTION_MODEL", "gemini-2.0-flash").strip(),
@@ -83,3 +94,4 @@ def get_media_settings() -> MediaSettings:
         temp_dir=os.getenv("MEDIA_TEMP_DIR", "temp").strip(),
         dead_letter_dir=os.getenv("MEDIA_DEAD_LETTER_DIR", "services/media/.dead_letters").strip(),
     )
+

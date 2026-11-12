@@ -57,3 +57,4 @@ def finance_checker_node(state: AgentState) -> dict:
             )
 
     return {"tasks": updates}
+

@@ -85,7 +85,10 @@ def upload_to_cloudinary(file_path: str, job_id: str) -> str:
         and settings.cloudinary_api_secret
         and "placeholder" not in settings.cloudinary_cloud_name.lower()
     )
-    if not has_creds or Path(file_path).read_bytes()[:20].startswith(b"DEMO_DUBBED_VIDEO"):
+    is_demo_file = Path(file_path).exists() and Path(file_path).read_bytes()[:20].startswith(b"DEMO_DUBBED_VIDEO")
+    if is_demo_file:
+        return f"demo://cloudinary/dubbed/{job_id}.mp4"
+    if not has_creds:
         if settings.demo_mode:
             return f"demo://cloudinary/dubbed/{job_id}.mp4"
         raise EnvironmentError("Cloudinary credentials are required when DEMO_MODE=false.")
@@ -100,3 +103,4 @@ def upload_to_cloudinary(file_path: str, job_id: str) -> str:
     )
     result = cloudinary.uploader.upload(file_path, resource_type="video")
     return str(result["secure_url"])
+

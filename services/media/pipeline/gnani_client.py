@@ -112,6 +112,7 @@ class GnaniVoiceEngine:
         stt_endpoint: Optional[str] = None,
         tts_endpoint: Optional[str] = None,
         prisma_model: Optional[str] = None,
+        timbre_model: Optional[str] = None,
     ) -> None:
         settings = get_media_settings()
         self.api_key = (api_key if api_key is not None else settings.gnani_api_key).strip()
@@ -119,21 +120,25 @@ class GnaniVoiceEngine:
         self.stt_endpoint = (stt_endpoint or settings.gnani_stt_endpoint).rstrip("/")
         self.tts_endpoint = (tts_endpoint or settings.gnani_tts_endpoint).rstrip("/")
         self.prisma_model = prisma_model or settings.gnani_prisma_model
+        self.timbre_model = timbre_model or settings.gnani_timbre_model
         self.demo_mode = settings.demo_mode
 
         self.headers: Dict[str, str] = {}
         if self.api_key:
+            self.headers["X-API-Key-ID"] = self.api_key
             self.headers["x-api-key"] = self.api_key
-            self.headers["Authorization"] = f"Bearer {self.token or self.api_key}"
+        if self.token and "placeholder" not in self.token.lower():
+            self.headers["Authorization"] = f"Bearer {self.token}"
 
     def transcribe_audio(
         self,
         audio_file_path: str,
         language_code: str = "auto-detect",
+        force_demo: bool = False,
     ) -> Dict[str, Any]:
-        """Transcribe audio with Gnani Prisma V3.0 code-mixed STT + speaker diarization."""
-        if not _has_real_key(self.api_key):
-            if self.demo_mode:
+        """Transcribe audio with Gnani Vachana Prisma V3.0 STT + speaker diarization."""
+        if force_demo or not _has_real_key(self.api_key):
+            if force_demo or self.demo_mode:
                 logger.info("GnaniVoiceEngine: using deterministic Hinglish DEMO_MODE STT fixture.")
                 return _demo_prisma_response()
             raise EnvironmentError("GNANI_API_KEY is required when DEMO_MODE=false.")
@@ -147,7 +152,7 @@ class GnaniVoiceEngine:
                 "output_style": "transcribe",
             }
             response = requests.post(
-                f"{self.stt_endpoint}/transcribe",
+                self.stt_endpoint,
                 headers=self.headers,
                 files=files,
                 data=data,
@@ -162,28 +167,31 @@ class GnaniVoiceEngine:
         target_lang: str = "hi",
         voice: Optional[str] = None,
         speed: float = 1.0,
+        force_demo: bool = False,
     ) -> bytes:
-        """Synthesize natural Indic/English speech using Gnani Timbre."""
+        """Synthesize speech using Gnani Vachana Timbre TTS."""
         settings = get_media_settings()
         chosen_voice = voice or settings.gnani_timbre_voice
 
-        if not _has_real_key(self.api_key):
-            if self.demo_mode:
+        if force_demo or not _has_real_key(self.api_key):
+            if force_demo or self.demo_mode:
                 est_duration = max(0.5, min(6.0, len(text.split()) * 0.25))
                 return _generate_demo_wav_bytes(duration_sec=est_duration)
             raise EnvironmentError("GNANI_API_KEY is required when DEMO_MODE=false.")
 
         payload = {
+            "model": self.timbre_model,
             "text": text,
             "language": target_lang,
             "voice": chosen_voice,
             "speed": speed,
         }
         response = requests.post(
-            f"{self.tts_endpoint}/synthesize",
+            self.tts_endpoint,
             headers=self.headers,
             json=payload,
             timeout=60,
         )
         response.raise_for_status()
         return response.content
+

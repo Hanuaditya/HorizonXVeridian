@@ -40,3 +40,4 @@ def hr_checker_node(state: AgentState) -> dict:
         logger.info("hr_checker_node: task='%s' org='%s' -> hr_status=%s", task_id, org_id, hr_status)
 
     return {"tasks": updates}
+

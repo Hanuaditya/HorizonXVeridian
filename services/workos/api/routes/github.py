@@ -119,3 +119,4 @@ async def github_webhook(
             background_tasks.add_task(_run_github_graph_b, org_id, repo, branch, author, msg, delivery_id)
 
     return Response(content=json.dumps({"status": "accepted", "commits": len(commits)}), media_type="application/json", status_code=200)
+

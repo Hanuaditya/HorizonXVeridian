@@ -32,6 +32,7 @@ class Transcriber(ABC):
         self,
         audio_path: str,
         language_hint: str = "auto-detect",
+        force_demo: bool = False,
     ) -> TranscriptResult:
         """Transcribe an audio file into diarized TranscriptSegments."""
 
@@ -48,8 +49,13 @@ class GnaniPrismaTranscriber(Transcriber):
         self,
         audio_path: str,
         language_hint: str = "auto-detect",
+        force_demo: bool = False,
     ) -> TranscriptResult:
-        raw = self.engine.transcribe_audio(audio_path, language_code=language_hint)
+        raw = self.engine.transcribe_audio(
+            audio_path,
+            language_code=language_hint,
+            force_demo=force_demo,
+        )
         speaker_hints: Dict[str, str] = {}
         segments: List[TranscriptSegment] = []
 
@@ -260,3 +266,4 @@ def resolve_speaker_user_ids(
         )
 
     return resolved
+

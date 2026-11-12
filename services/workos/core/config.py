@@ -74,6 +74,12 @@ class WorkOSSettings:
 
 def get_settings() -> WorkOSSettings:
     """Build fresh settings snapshot from environment variables."""
+    app_env = os.getenv("APP_ENV", "development").strip()
+    demo_mode = _as_bool(os.getenv("DEMO_MODE"), default=True)
+    hmac_secret = os.getenv("SHARED_HMAC_SECRET", "").strip()
+    if not hmac_secret and demo_mode and app_env == "development":
+        hmac_secret = "horizon_veridian_demo_hmac_secret_min_32_bytes_2026"
+
     service_key = (
         os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         or os.getenv("SUPABASE_SERVICE_KEY")
@@ -86,11 +92,11 @@ def get_settings() -> WorkOSSettings:
     manager_roles = tuple(r.strip() for r in roles_raw.split(",") if r.strip())
 
     return WorkOSSettings(
-        app_env=os.getenv("APP_ENV", "development").strip(),
-        demo_mode=_as_bool(os.getenv("DEMO_MODE"), default=True),
+        app_env=app_env,
+        demo_mode=demo_mode,
         frontend_url=os.getenv("FRONTEND_URL", "http://localhost:3000").strip(),
         workos_port=int(os.getenv("WORKOS_PORT", "8000")),
-        shared_hmac_secret=os.getenv("SHARED_HMAC_SECRET", "").strip(),
+        shared_hmac_secret=hmac_secret,
         max_hmac_skew_seconds=int(os.getenv("MAX_HMAC_SKEW_SECONDS", "300")),
         clerk_jwks_url=os.getenv("CLERK_JWKS_URL", "").strip(),
         clerk_issuer=os.getenv("CLERK_ISSUER", "").strip(),

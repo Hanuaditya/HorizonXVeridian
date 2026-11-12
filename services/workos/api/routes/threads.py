@@ -163,3 +163,4 @@ async def admin_trigger_connector_sync(
         "finance_budgets": len(fin_rows),
         "security_policies": len(sec_rows),
     }
+

@@ -105,3 +105,4 @@ class AgentState(TypedDict, total=False):
     intent_confidence: Optional[float]
     intent_reason: Optional[str]
     tracker_updates: List[Dict[str, Any]]
+

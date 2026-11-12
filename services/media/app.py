@@ -68,6 +68,42 @@ def poll_media_job(job_id: str):
     return jsonify(job), 200
 
 
+@app.route("/media/demo-simulate", methods=["POST"])
+def demo_simulate_route():
+    """Run offline Hinglish simulation and emit HMAC-signed meeting.ended to WorkOS."""
+    body = request.get_json(silent=True) or {}
+    meeting_id = body.get("meeting_id") or f"sim-{uuid.uuid4().hex[:8]}"
+    org_id = body.get("org_id") or "org_demo_horizon"
+    try:
+        res = process_media_job(
+            job_id=f"sim-{uuid.uuid4().hex[:8]}",
+            meeting_id=meeting_id,
+            org_id=org_id,
+            video_url="demo://hinglish_sprint_sync.mp4",
+            title=body.get("title") or "Hinglish Infrastructure Sync (Media -> WorkOS)",
+            target_lang="en",
+            participants=body.get("participants") or [
+                {"clerk_user_id": "user_dov", "display_name": "Dov Hershkovitz", "email": "dov@veridian.local"},
+                {"clerk_user_id": "user_josh", "display_name": "Josh Lambert", "email": "josh@veridian.local"},
+                {"clerk_user_id": "user_scott", "display_name": "Scott Williamson", "email": "scott@veridian.local"},
+                {"clerk_user_id": "user_amit", "display_name": "Amit Sharma", "email": "amit@veridian.local"},
+            ],
+            generate_dub=True,
+            emit_meeting_ended=True,
+        )
+        return jsonify({
+            "status": "dispatched_to_workos",
+            "meeting_id": res["meeting_id"],
+            "thread_id": (res.get("workos_ack") or {}).get("thread_id"),
+            "dubbed_url": res["dubbed_url"],
+            "summary": res["summary"],
+            "segments": res["segments"],
+            "workos_ack": res["workos_ack"],
+        }), 202
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/generate-insight", methods=["POST"])
 def generate_insight_route():
     """Backward-compatible synchronous insight generation endpoint for apps/web."""

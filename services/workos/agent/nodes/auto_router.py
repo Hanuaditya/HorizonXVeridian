@@ -51,3 +51,4 @@ def auto_router_node(state: AgentState) -> dict:
         logger.info("auto_router_node: task='%s' rerouted '%s' -> '%s'", task_id, current_assignee, new_assignee)
 
     return {"tasks": updates}
+
