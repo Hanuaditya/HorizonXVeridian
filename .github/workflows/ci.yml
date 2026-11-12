@@ -11,9 +11,9 @@ jobs:
     name: Validate Contracts & Schema Drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Verify Generated Contracts are Fresh
@@ -24,9 +24,9 @@ jobs:
     name: Validate Python Services
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install Media Service Dependencies
@@ -52,20 +52,23 @@ jobs:
     name: Validate Web App (Next.js 15)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Install Dependencies
         working-directory: ./apps/web
-        run: npm ci
+        run: npm ci --workspaces=false
       - name: Type Check
         working-directory: ./apps/web
-        run: npm run type-check
+        run: npm run type-check --workspaces=false
       - name: Lint
         working-directory: ./apps/web
-        run: npm run lint
+        run: npm run lint --workspaces=false
       - name: Build Next.js App
         working-directory: ./apps/web
-        run: npm run build
+        env:
+          DEMO_MODE: "true"
+          NEXT_PUBLIC_DEMO_MODE: "true"
+        run: npm run build --workspaces=false
