@@ -13,6 +13,10 @@ interface EmployeeBotPaneProps {
   dispatchedTickets: WorkOSDispatchedTicket[];
   slackFeed: WorkOSSlackMessage[];
   onAfterReply: () => Promise<void>;
+  currentUserId?: string | null;
+  currentUserEmail?: string | null;
+  currentUserName?: string | null;
+  isEmployeeOnly?: boolean;
 }
 
 const QUICK_REPLIES = [
@@ -27,12 +31,16 @@ export default function EmployeeBotPane({
   dispatchedTickets,
   slackFeed,
   onAfterReply,
+  currentUserId,
+  currentUserEmail,
+  currentUserName,
+  isEmployeeOnly = false,
 }: EmployeeBotPaneProps) {
   const activeAssignees = useMemo(() => {
     const items: Array<{ label: string; assignee: string; taskId: string; jiraKey?: string }> = [];
     const dispatchedByTask = new Map(dispatchedTickets.map((d) => [d.task_id, d]));
 
-    const sourceList =
+    const rawList =
       dispatchedTickets.length > 0
         ? dispatchedTickets.map((d) => ({
             task_id: d.task_id,
@@ -47,8 +55,27 @@ export default function EmployeeBotPane({
               jira_key: dispatchedByTask.get(t.task_id)?.jira_key || t.jira_ticket_id || undefined,
             }));
 
-    sourceList.forEach((item, idx) => {
-      const prefix = idx === 0 ? 'Employee A' : idx === 1 ? 'Employee B' : `Employee ${idx + 1}`;
+    const sourceList = isEmployeeOnly
+      ? rawList.filter((item) => {
+          const a = (item.assignee || '').toLowerCase();
+          const email = (currentUserEmail || '').toLowerCase();
+          const name = (currentUserName || '').toLowerCase();
+          const uid = (currentUserId || '').toLowerCase();
+
+          if (email && email.includes('ifcatchme34') && (a.includes('catchme') || a.includes('josh'))) return true;
+          if (email && email.includes('resigo') && (a.includes('resigo') || a.includes('gabe'))) return true;
+          if (name && (a.includes(name) || name.includes(a))) return true;
+          if (uid && uid.includes('3m0ym') && a.includes('catchme')) return true;
+          if (uid && uid.includes('31vzu') && a.includes('resigo')) return true;
+          // Fallback: if single item in list and no match, show it
+          return false;
+        })
+      : rawList;
+
+    const listToRender = sourceList.length > 0 ? sourceList : (isEmployeeOnly ? rawList.slice(0, 1) : rawList);
+
+    listToRender.forEach((item, idx) => {
+      const prefix = isEmployeeOnly ? 'My Task' : (idx === 0 ? 'Employee A' : idx === 1 ? 'Employee B' : `Employee ${idx + 1}`);
       items.push({
         label: `${prefix}: ${item.assignee}`,
         assignee: item.assignee,
@@ -57,7 +84,7 @@ export default function EmployeeBotPane({
       });
     });
     return items;
-  }, [dispatchedTickets, tasks]);
+  }, [dispatchedTickets, tasks, isEmployeeOnly, currentUserId, currentUserEmail, currentUserName]);
 
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   const [replyText, setReplyText] = useState<string>('');
@@ -118,10 +145,10 @@ export default function EmployeeBotPane({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
         <div>
           <span className="rounded bg-sky-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
-            Right Pane · Employee 1-on-1 Bot Console
+            {isEmployeeOnly ? 'Personal Employee Workspace' : 'Right Pane · Employee 1-on-1 Bot Console'}
           </span>
           <h2 className="mt-1 text-base font-bold text-white">
-            Veridian Bot ↔ Employee Slack DM Loop
+            {isEmployeeOnly ? `Veridian Bot ↔ ${currentUserName || 'Your'} Private 1-on-1 DM` : 'Veridian Bot ↔ Employee Slack DM Loop'}
           </h2>
         </div>
         {currentTab?.jiraKey && (

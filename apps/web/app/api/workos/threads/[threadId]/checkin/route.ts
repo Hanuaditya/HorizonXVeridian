@@ -9,7 +9,13 @@ export async function POST(
 ) {
   try {
     const { threadId } = await context.params;
-    const { authorization } = await getWorkOSAuthHeader();
+    const { authorization, orgRole } = await getWorkOSAuthHeader();
+    if (orgRole && orgRole !== 'org:admin') {
+      return NextResponse.json(
+        { error: 'Forbidden: Manager role (org:admin) required to trigger check-ins.' },
+        { status: 403 }
+      );
+    }
     const res = await fetch(
       `${getWorkOSBaseUrl()}/api/threads/${encodeURIComponent(threadId)}/checkin`,
       {

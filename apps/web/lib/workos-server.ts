@@ -33,6 +33,9 @@ function mintLocalDemoJwt(role: 'org:admin' | 'org:member' = 'org:admin'): strin
 export async function getWorkOSAuthHeader(): Promise<{
   authorization: string;
   isDemo: boolean;
+  userId?: string | null;
+  orgId?: string | null;
+  orgRole?: string | null;
 }> {
   const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
   const hasRealClerk = Boolean(clerkKey && !clerkKey.startsWith('pk_test_ZXhh'));
@@ -42,7 +45,13 @@ export async function getWorkOSAuthHeader(): Promise<{
       const session = await auth();
       const token = await session.getToken();
       if (token) {
-        return { authorization: `Bearer ${token}`, isDemo: false };
+        return {
+          authorization: `Bearer ${token}`,
+          isDemo: false,
+          userId: session.userId,
+          orgId: session.orgId,
+          orgRole: session.orgRole,
+        };
       }
     } catch {
       // Fall through only in explicit local DEMO_MODE
@@ -54,7 +63,13 @@ export async function getWorkOSAuthHeader(): Promise<{
     process.env.NODE_ENV !== 'production';
 
   if (demoAllowed) {
-    return { authorization: `Bearer ${mintLocalDemoJwt('org:admin')}`, isDemo: true };
+    return {
+      authorization: `Bearer ${mintLocalDemoJwt('org:admin')}`,
+      isDemo: true,
+      userId: 'user_clerk_manager_demo',
+      orgId: 'org_demo_horizon',
+      orgRole: 'org:admin',
+    };
   }
 
   throw new Error('Unauthorized: Clerk authentication session required.');

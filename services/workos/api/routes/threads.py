@@ -11,7 +11,12 @@ from pydantic import BaseModel
 
 from api.auth import AuthContext, require_auth, require_manager
 from api.sse import sse_manager
-from connectors.sprint_loop import process_employee_reply, trigger_checkin_for_thread
+from connectors.sprint_loop import (
+    build_default_hitl_decisions,
+    process_employee_reply,
+    resume_graph_a_and_sync,
+    trigger_checkin_for_thread,
+)
 from connectors.sync_finance import sync_finance_data
 from connectors.sync_hr import sync_hr_data
 from connectors.sync_security import sync_security_data
@@ -21,6 +26,7 @@ from core.store import (
     list_audit_trail,
     list_employees,
     list_thread_snapshots,
+    record_approval,
     upsert_employee_mapping,
 )
 
@@ -34,6 +40,8 @@ class EmployeeMappingUpdate(BaseModel):
     slack_id: Optional[str] = None
     jira_account_id: Optional[str] = None
     email: Optional[str] = None
+    domain_skills: Optional[List[str]] = None
+    active_task_count: Optional[int] = None
 
 
 class EmployeeReplyRequest(BaseModel):
@@ -151,6 +159,8 @@ async def admin_upsert_employee(
         slack_id=body.slack_id,
         jira_account_id=body.jira_account_id,
         email=body.email,
+        domain_skills=body.domain_skills,
+        active_task_count=body.active_task_count,
     )
     return {"status": "updated", "employee": row}
 
@@ -174,11 +184,28 @@ async def admin_trigger_connector_sync(
 @router.post("/threads/{thread_id}/checkin")
 async def manual_trigger_checkin(
     thread_id: str,
-    auth: AuthContext = Depends(require_auth),
+    auth: AuthContext = Depends(require_manager),
 ) -> Dict[str, Any]:
-    """Fast-forward trigger to send 1-on-1 status check-in DMs to assigned employees now."""
+    """Fast-forward trigger to send 1-on-1 status check-in DMs to assigned employees now (Manager only)."""
     _verify_thread_org_access(thread_id, auth.org_id)
     return await trigger_checkin_for_thread(org_id=auth.org_id, thread_id=thread_id)
+
+
+@router.post("/threads/{thread_id}/approve")
+async def approve_sprint_thread(
+    thread_id: str,
+    body: Optional[Dict[str, Any]] = None,
+    auth: AuthContext = Depends(require_manager),
+) -> Dict[str, Any]:
+    """Manager-only approval endpoint to create sprint tickets and resume Graph A."""
+    _verify_thread_org_access(thread_id, auth.org_id)
+    snap = get_thread_snapshot(thread_id)
+    if not snap:
+        raise HTTPException(status_code=404, detail=f"Thread '{thread_id}' not found.")
+    decisions = (body or {}).get("hitl_decisions") or build_default_hitl_decisions(snap)
+    approver = f"clerk:{auth.user_id}"
+    record_approval(auth.org_id, thread_id, snap.get("meeting_id") or thread_id, decisions, approver)
+    return await resume_graph_a_and_sync(thread_id, auth.org_id, approver, decisions)
 
 
 @router.post("/threads/{thread_id}/employee-reply")

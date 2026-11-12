@@ -19,6 +19,7 @@ export interface AppUser {
   username: string;
   fullName: string;
   imageUrl: string;
+  email?: string | null;
 }
 
 export interface AppAuthValue {
@@ -34,10 +35,11 @@ export interface AppAuthValue {
 }
 
 const DEMO_USER: AppUser = {
-  id: 'user_demo_manager',
-  username: 'scott.manager',
-  fullName: 'Scott Williamson (Demo Manager)',
+  id: 'user_clerk_manager_demo',
+  username: 'hanu.manager',
+  fullName: 'Hanu Aditya (Engineering Manager)',
   imageUrl: '/images/avatar-1.jpeg',
+  email: 'aarav.sharma@example.com',
 };
 
 const DEFAULT_DEMO_CONTEXT: AppAuthValue = {
@@ -75,6 +77,7 @@ function ClerkAuthSync({ children }: { children: React.ReactNode }) {
           username: user.username || user.firstName || 'user',
           fullName: user.fullName || user.username || 'User',
           imageUrl: user.imageUrl || '/images/avatar-1.jpeg',
+          email: user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || null,
         }
       : null,
   };

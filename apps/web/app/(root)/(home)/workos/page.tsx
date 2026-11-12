@@ -21,13 +21,13 @@ const GOLDEN_HINGLISH_TRANSCRIPT = `[00:00 - Dov]: Team, welcome. We have three 
 [01:40 - Amit]: Let me check finance... Hamara compute budget for this quarter is already 0. We need approval before provisioning enterprise tier.
 [02:00 - Dov]: Theek hai, let's have the AI platform check our policies, route it to the right person, and create the tickets. Meeting adjourned!`;
 
-const FULL_SPRINT_DEMO_TRANSCRIPT = `[00:00 - Manager]: Let's review our Q4 Sprint commitments for two engineers.
-[00:12 - Manager]: First, Arjun Rao, deploy the Elastic search cluster directly to AWS production by Friday.
-[00:25 - Amit]: Note that Arjun Rao is currently on paternity leave until next Monday! Also the enterprise cluster costs Rs 2.5 Lakhs/month while Q4 compute_infra budget remaining is 0 INR.
-[00:40 - Scott]: Also remember SEC-POL-089 prohibits skipping the 14-day staging bake period before AWS production.
-[00:55 - Manager]: Understood. Second, Gabe Weaver, please integrate the unsupported Legacy v1 Payment API directly into the React auth checkout flow by Thursday.
-[01:10 - Scott]: Flagging that — SEC-POL-104 blocks integrating unsupported or unapproved Legacy v1 third-party APIs into production.
-[01:25 - Manager]: Send me immediate alerts, suggest a domain-matched replacement for Jason, and wait for my approval before creating any Jira tickets.`;
+const FULL_SPRINT_DEMO_TRANSCRIPT = `[00:00 - Hanu Aditya]: Team, let's review our sprint commitments for catchme if and Resigo.
+[00:12 - Hanu Aditya]: First, Arjun Rao, please deploy the Elastic search cluster directly to AWS production by Friday.
+[00:25 - catchme if]: Jason is currently on paternity leave! Also that AWS enterprise Elasticsearch cluster will cost Rs 2.5 Lakhs a month while our compute budget remaining is 0 INR.
+[00:42 - Resigo]: Furthermore, SEC-POL-089 prohibits deploying directly to AWS production without a 14-day staging bake period.
+[00:58 - Hanu Aditya]: Got it. Second task: Resigo, please integrate the unsupported Legacy v1 Payment API directly into our React auth checkout flow by Thursday.
+[01:15 - catchme if]: Flagging that — SEC-POL-104 explicitly blocks integrating unsupported or unapproved third-party APIs into production without security sign-off.
+[01:30 - Hanu Aditya]: Understood. Veridian Bot, send me immediate compliance alerts, suggest an available domain expert with the lowest workload to replace Jason, and send me the review menu. Do not create any Jira tickets until I approve.`;
 
 export default function WorkOSHubPage() {
   return (
@@ -38,7 +38,9 @@ export default function WorkOSHubPage() {
 }
 
 function WorkOSHubContent() {
-  const { isManager, orgId } = useAppAuth();
+  const { isManager, orgId, orgRole, userId, user } = useAppAuth();
+  const isAdmin = isManager || orgRole === 'org:admin';
+
   const [threadId, setThreadId] = useState<string | null>(null);
   const [recentThreads, setRecentThreads] = useState<WorkOSThreadState[]>([]);
   const [transcript, setTranscript] = useState<string>(FULL_SPRINT_DEMO_TRANSCRIPT);
@@ -69,14 +71,18 @@ function WorkOSHubContent() {
         const res = await fetch('/api/workos/threads');
         if (res.ok) {
           const data = await res.json();
-          setRecentThreads(data.threads || []);
+          const list = data.threads || [];
+          setRecentThreads(list);
+          if (!isAdmin && list.length > 0 && !threadId) {
+            setThreadId(list[0].thread_id);
+          }
         }
       } catch {
         // Offline tolerance when WorkOS API is stopped
       }
     };
     loadRecent();
-  }, [phase]);
+  }, [phase, isAdmin, threadId]);
 
   useEffect(() => {
     if (!agentState.meeting_id && phase !== 'COMPLETE') return;
@@ -200,6 +206,70 @@ function WorkOSHubContent() {
     setAuditEntries([]);
     setSubmitError(null);
   };
+
+  // TRUE ROLE SEPARATION: Render strictly the personal Employee Workspace for non-admin users
+  if (!isAdmin) {
+    return (
+      <section className="flex flex-col gap-6 text-white">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-sky-400/25 bg-dark-1 p-5 shadow-lg">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="rounded bg-sky-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
+                Employee Portal · Personal Workspace
+              </span>
+              <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                Slack DM Loop Synced
+              </span>
+            </div>
+            <h1 className="mt-1.5 text-2xl font-bold text-white">
+              {user?.fullName || user?.username || 'Team Member'} Workspace
+            </h1>
+            <p className="mt-1 text-xs text-white/60">
+              Identity: <span className="font-mono text-sky-200">{user?.email || userId}</span> · Role: <span className="font-semibold text-white/80">{orgRole || 'org:member'}</span>
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {recentThreads.length > 1 && (
+              <select
+                value={threadId || ''}
+                onChange={(e) => setThreadId(e.target.value)}
+                className="rounded-lg border border-white/15 bg-dark-2 px-3 py-1.5 text-xs text-white focus:border-sky-400 focus:outline-none"
+              >
+                {recentThreads.map((t) => (
+                  <option key={t.thread_id} value={t.thread_id}>
+                    {t.title || t.meeting_id}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="rounded-lg border border-white/10 bg-dark-2 px-3 py-1.5 text-xs text-white/70">
+              Org: <span className="font-semibold text-white">{orgId || 'Horizon Veridian'}</span>
+            </div>
+          </div>
+        </div>
+
+        {streamError && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs text-red-300">
+            SSE Stream Notice: {streamError}
+          </div>
+        )}
+
+        <div className="mx-auto w-full max-w-4xl">
+          <EmployeeBotPane
+            threadId={threadId}
+            tasks={agentState.tasks ?? {}}
+            dispatchedTickets={agentState.dispatched_tickets ?? []}
+            slackFeed={agentState.slack_feed ?? []}
+            onAfterReply={refreshState}
+            currentUserId={userId}
+            currentUserEmail={user?.email}
+            currentUserName={user?.fullName || user?.username}
+            isEmployeeOnly={true}
+          />
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="flex flex-col gap-6 text-white">
@@ -359,6 +429,10 @@ function WorkOSHubContent() {
             dispatchedTickets={agentState.dispatched_tickets ?? []}
             slackFeed={agentState.slack_feed ?? []}
             onAfterReply={refreshState}
+            currentUserId={userId}
+            currentUserEmail={user?.email}
+            currentUserName={user?.fullName || user?.username}
+            isEmployeeOnly={false}
           />
         </div>
       ) : (

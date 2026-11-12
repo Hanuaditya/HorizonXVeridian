@@ -20,6 +20,78 @@ def has_real_slack_creds() -> bool:
     )
 
 
+MANAGER_SLACK_USER_ID = "U_MGR_DEMO"
+EMPLOYEE_A_SLACK_USER_ID = "U_EMP_A_DEMO"  # catchme if (rohan.patel@example.com)
+EMPLOYEE_B_SLACK_USER_ID = "U_EMP_B_DEMO"  # Resigo (priya.sen@example.com)
+
+_SLACK_USER_MAP = {
+    "hanu aditya": MANAGER_SLACK_USER_ID,
+    "aarav.sharma@example.com": MANAGER_SLACK_USER_ID,
+    "manager": MANAGER_SLACK_USER_ID,
+    "user_31kwrn5f4zl7jcioikj1rg05ito": MANAGER_SLACK_USER_ID,
+    "catchme if": EMPLOYEE_A_SLACK_USER_ID,
+    "catchme": EMPLOYEE_A_SLACK_USER_ID,
+    "rohan.patel@example.com": EMPLOYEE_A_SLACK_USER_ID,
+    "user_3m0ymvnwbjcx3krbqyl5eb2nn71": EMPLOYEE_A_SLACK_USER_ID,
+    "employee a": EMPLOYEE_A_SLACK_USER_ID,
+    "resigo": EMPLOYEE_B_SLACK_USER_ID,
+    "priya.sen@example.com": EMPLOYEE_B_SLACK_USER_ID,
+    "user_31vzunj55onwyw2d4wevxvtvheh": EMPLOYEE_B_SLACK_USER_ID,
+    "employee b": EMPLOYEE_B_SLACK_USER_ID,
+}
+
+_DM_CHANNEL_CACHE: Dict[str, str] = {}
+
+
+def resolve_slack_user_id(
+    recipient: str,
+    role: str = "employee",
+    org_id: Optional[str] = None,
+) -> Optional[str]:
+    """Map recipient name, email, clerk id, or role to real Slack Member ID (U0...)."""
+    rec_clean = (recipient or "").strip().lower()
+    if rec_clean.startswith("u0") or (rec_clean.startswith("u") and len(rec_clean) >= 9):
+        return recipient.strip()
+    if role == "manager" or rec_clean in {"manager", "hanu aditya", "aarav.sharma@example.com"}:
+        return MANAGER_SLACK_USER_ID
+    if rec_clean in _SLACK_USER_MAP:
+        return _SLACK_USER_MAP[rec_clean]
+    if "catchme" in rec_clean or "ifcatchme34" in rec_clean:
+        return EMPLOYEE_A_SLACK_USER_ID
+    if "resigo" in rec_clean:
+        return EMPLOYEE_B_SLACK_USER_ID
+    if org_id:
+        try:
+            from core.store import list_employees
+            for emp in list_employees(org_id):
+                fn = str(emp.get("full_name") or "").lower()
+                em = str(emp.get("email") or "").lower()
+                ck = str(emp.get("clerk_user_id") or "").lower()
+                if (rec_clean and (rec_clean in fn or fn in rec_clean or rec_clean == em or rec_clean == ck)) and emp.get("slack_id"):
+                    return str(emp["slack_id"])
+        except Exception:
+            pass
+    return None
+
+
+def open_slack_dm_channel(client: Any, slack_user_id: str) -> Optional[str]:
+    """Open or retrieve a real 1-on-1 direct message (IM) channel via conversations.open."""
+    if not slack_user_id:
+        return None
+    if slack_user_id in _DM_CHANNEL_CACHE:
+        return _DM_CHANNEL_CACHE[slack_user_id]
+    try:
+        resp = client.conversations_open(users=slack_user_id)
+        if resp.get("ok") and resp.get("channel", {}).get("id"):
+            dm_channel = str(resp["channel"]["id"])
+            _DM_CHANNEL_CACHE[slack_user_id] = dm_channel
+            logger.info("Opened Slack DM channel '%s' for user '%s'", dm_channel, slack_user_id)
+            return dm_channel
+    except Exception as exc:
+        logger.warning("Slack conversations_open(%s) failed: %s", slack_user_id, exc)
+    return None
+
+
 def resolve_live_slack_channel(client: Any, preferred_channel: str) -> str:
     """Resolve Slack channel ID cleanly, falling back to accessible workspace channels."""
     pref_clean = (preferred_channel or "").strip().lstrip("#").lower()
@@ -85,13 +157,21 @@ def post_slack_message(
     resolved_channel = preferred
     ts = f"demo_ts_{kind}_{task_id or thread_id}"
 
+    slack_uid = resolve_slack_user_id(recipient, role=role, org_id=org_id)
+
     if has_real_slack_creds() and not settings.demo_mode:
         try:
             from slack_sdk import WebClient
 
             client = WebClient(token=settings.slack_bot_token)
-            if not target_channel_id:
+            if target_channel_id:
+                resolved_channel = target_channel_id
+            elif slack_uid:
+                dm_ch = open_slack_dm_channel(client, slack_uid)
+                resolved_channel = dm_ch or resolve_live_slack_channel(client, preferred)
+            else:
                 resolved_channel = resolve_live_slack_channel(client, preferred)
+
             kwargs: Dict[str, Any] = {
                 "channel": resolved_channel,
                 "text": text,
@@ -107,6 +187,8 @@ def post_slack_message(
             logger.warning("Slack post_slack_message failed (%s); feed mirrored locally.", exc)
     elif settings.demo_mode:
         sent = True
+        if slack_uid:
+            resolved_channel = f"D_{slack_uid}"
 
     record_slack_feed_message(
         org_id=org_id,

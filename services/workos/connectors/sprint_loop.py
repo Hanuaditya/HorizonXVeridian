@@ -488,13 +488,21 @@ async def process_employee_reply(
     }
 
 
-def _match_task_from_slack_message(text: str, open_rows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _match_task_from_slack_message(text: str, open_rows: List[Dict[str, Any]], user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     low = (text or "").lower()
     for row in open_rows:
         jk = str(row.get("jira_key") or "").lower()
         if jk and jk in low:
             return row
     task_rows = [r for r in open_rows if r.get("task_id") not in {"__MANAGER_REVIEW__", None}]
+    if user_id:
+        user_clean = user_id.strip().upper()
+        for r in task_rows:
+            assignee_low = str(r.get("assignee") or "").lower()
+            if user_clean == "U_EMP_A_DEMO" and "catchme" in assignee_low:
+                return r
+            if user_clean == "U_EMP_B_DEMO" and "resigo" in assignee_low:
+                return r
     return task_rows[0] if len(task_rows) == 1 else (task_rows[-1] if task_rows else None)
 
 
@@ -572,7 +580,7 @@ async def poll_slack_and_checkins_once() -> None:
                         await resume_graph_a_and_sync(m_tid, m_org, approver, decisions)
                         continue
 
-                target_row = _match_task_from_slack_message(text, rows)
+                target_row = _match_task_from_slack_message(text, rows, user_id=msg.get("user"))
                 if target_row and target_row.get("task_id"):
                     await process_employee_reply(
                         org_id=target_row["org_id"],

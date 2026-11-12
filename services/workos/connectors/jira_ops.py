@@ -37,14 +37,61 @@ def _adf_doc(text: str) -> Dict[str, Any]:
     }
 
 
+_JIRA_ACCOUNT_ID_CACHE: Dict[str, str] = {}
+
+
+def lookup_jira_account_id(
+    query_str: str,
+    org_id: Optional[str] = None,
+) -> Optional[str]:
+    """Look up Jira accountId by email or name using /rest/api/3/user/search."""
+    clean = (query_str or "").strip()
+    if not clean:
+        return None
+    if clean in _JIRA_ACCOUNT_ID_CACHE:
+        return _JIRA_ACCOUNT_ID_CACHE[clean]
+
+    settings = get_settings()
+    if not has_real_jira_creds():
+        if settings.demo_mode:
+            mock_acc = f"demo-acc-{clean.split('@')[0].lower().replace(' ', '-')}"
+            _JIRA_ACCOUNT_ID_CACHE[clean] = mock_acc
+            return mock_acc
+        return None
+
+    endpoint = f"{settings.jira_base_url.rstrip('/')}/rest/api/3/user/search"
+    try:
+        resp = httpx.get(
+            endpoint,
+            params={"query": clean},
+            auth=(settings.jira_email, settings.jira_api_token),
+            headers={"Accept": "application/json"},
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            users = resp.json()
+            if isinstance(users, list) and len(users) > 0:
+                acc_id = users[0].get("accountId")
+                if acc_id:
+                    _JIRA_ACCOUNT_ID_CACHE[clean] = str(acc_id)
+                    logger.info("Resolved Jira accountId '%s' for '%s'", acc_id, clean)
+                    return str(acc_id)
+    except Exception as exc:
+        logger.warning("Jira user search failed for '%s': %s", clean, exc)
+    return None
+
+
 def create_jira_issue(
     title: str,
     description: str,
     assignee: str,
     task_id: str,
     commit_message: Optional[str] = None,
+    org_id: Optional[str] = None,
+    assignee_email: Optional[str] = None,
+    jira_account_id: Optional[str] = None,
 ) -> Dict[str, str]:
-    """Create a Jira issue in allow-listed JIRA_PROJECT_KEY (e.g., SCRUM)."""
+    """Create a Jira issue in allow-listed JIRA_PROJECT_KEY (e.g., SCRUM) assigned to the employee."""
     settings = get_settings()
     project_key = resolve_jira_project_key()
 
@@ -53,6 +100,22 @@ def create_jira_issue(
         full_desc = f"Assigned Employee: {assignee}\n\n{full_desc}".strip()
     if commit_message:
         full_desc = f"{full_desc}\n\nProposed Commit Message:\n{commit_message}".strip()
+
+    # Resolve Jira accountId if not already provided
+    resolved_acc_id = jira_account_id
+    if not resolved_acc_id and assignee_email:
+        resolved_acc_id = lookup_jira_account_id(assignee_email, org_id=org_id)
+    if not resolved_acc_id and assignee:
+        known_emails = {
+            "catchme if": "rohan.patel@example.com",
+            "resigo": "priya.sen@example.com",
+            "hanu aditya": "aarav.sharma@example.com",
+        }
+        cand_email = known_emails.get(assignee.lower())
+        if cand_email:
+            resolved_acc_id = lookup_jira_account_id(cand_email, org_id=org_id)
+        if not resolved_acc_id:
+            resolved_acc_id = lookup_jira_account_id(assignee, org_id=org_id)
 
     if not has_real_jira_creds():
         if settings.demo_mode:
@@ -63,6 +126,7 @@ def create_jira_issue(
                 "url": f"https://veridian-demo.atlassian.net/browse/{key}",
                 "mode": "demo_mock",
                 "jira_status": "To Do",
+                "assignee_account_id": resolved_acc_id or "demo-acc-assignee",
             }
         raise EnvironmentError("Jira credentials required when DEMO_MODE=false.")
 
@@ -76,6 +140,9 @@ def create_jira_issue(
             "labels": ["horizon-veridian", "meeting-extracted"],
         }
     }
+    if resolved_acc_id:
+        payload["fields"]["assignee"] = {"accountId": resolved_acc_id}
+
     resp = httpx.post(
         endpoint,
         json=payload,
@@ -91,6 +158,7 @@ def create_jira_issue(
         "url": f"{settings.jira_base_url.rstrip('/')}/browse/{key}",
         "mode": "live_jira",
         "jira_status": "To Do",
+        "assignee_account_id": resolved_acc_id or "",
     }
 
 

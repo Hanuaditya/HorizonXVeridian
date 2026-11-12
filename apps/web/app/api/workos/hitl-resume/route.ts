@@ -6,7 +6,13 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { authorization } = await getWorkOSAuthHeader();
+    const { authorization, orgRole } = await getWorkOSAuthHeader();
+    if (orgRole && orgRole !== 'org:admin') {
+      return NextResponse.json(
+        { error: 'Forbidden: Manager role (org:admin) required to approve sprint tickets.' },
+        { status: 403 }
+      );
+    }
     const res = await fetch(`${getWorkOSBaseUrl()}/api/hitl-resume`, {
       method: 'POST',
       headers: {

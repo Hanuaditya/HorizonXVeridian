@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -31,6 +32,54 @@ load_dotenv(REPO_ROOT / ".env", override=False)
 
 from db.seed.seed_cli import run_seed  # noqa: E402
 from core.store import _get_supabase, list_employees, using_live_supabase  # noqa: E402
+
+REAL_TEAM_MEMBERS = [
+    {
+        "full_name": "Hanu Aditya",
+        "email": "aarav.sharma@example.com",
+        "clerk_user_id": "user_clerk_manager_demo",
+        "slack_user_id": "U_MGR_DEMO",
+        "role": "Engineering Manager",
+        "hr_status": "ACTIVE",
+        "department": "Engineering Leadership",
+        "domain_skills": ["management", "architecture", "security", "infra"],
+        "active_task_count": 0,
+    },
+    {
+        "full_name": "catchme if",
+        "email": "rohan.patel@example.com",
+        "clerk_user_id": "user_clerk_emp_a_demo",
+        "slack_user_id": "U_EMP_A_DEMO",
+        "role": "Senior Backend Engineer",
+        "hr_status": "ACTIVE",
+        "department": "Platform Engineering",
+        "domain_skills": ["elasticsearch", "aws", "backend", "infra", "kubernetes"],
+        "active_task_count": 1,
+    },
+    {
+        "full_name": "Resigo",
+        "email": "priya.sen@example.com",
+        "clerk_user_id": "user_clerk_emp_b_demo",
+        "slack_user_id": "U_EMP_B_DEMO",
+        "role": "Product & Frontend Engineer",
+        "hr_status": "ACTIVE",
+        "department": "Product & Frontend Engineering",
+        "domain_skills": ["frontend", "auth", "oauth", "ui", "api"],
+        "active_task_count": 2,
+    },
+    {
+        "full_name": "Arjun Rao",
+        "email": "arjun.rao@example.com",
+        "clerk_user_id": "user_demo_arjun",
+        "slack_user_id": "U_ARJUN_DEMO",
+        "role": "Group Product Manager, CI/CD",
+        "hr_status": "ON_PATERNITY_LEAVE",
+        "department": "Product Management",
+        "domain_skills": ["elasticsearch", "aws", "backend"],
+        "active_task_count": 2,
+        "leave_until": "2026-12-15",
+    },
+]
 
 
 def _slugify(val: str) -> str:
@@ -78,15 +127,57 @@ def ensure_org_seeded(org_id: str, org_name: str, force: bool = False) -> dict:
         run_seed(org_id=org_id)
         action = "seeded"
 
+    # Ensure the 3 real team identities + Jason are bound with verified Clerk and Slack IDs
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for mem in REAL_TEAM_MEMBERS:
+        skills_tag = f" | skills:{','.join(mem['domain_skills'])}" if mem.get("domain_skills") else ""
+        hr_row = {
+            "org_id": org_id,
+            "full_name": mem["full_name"],
+            "email": mem["email"],
+            "department": mem.get("department", "Engineering"),
+            "job_title": mem["role"],
+            "status": mem["hr_status"],
+            "leave_until": mem.get("leave_until"),
+            "last_synced_from": f"Team Identity Binding{skills_tag}",
+            "synced_at": now_iso,
+        }
+        sb.table("hr_employees").upsert(hr_row, on_conflict="org_id,full_name").execute()
+
+        emp_row = {
+            "org_id": org_id,
+            "clerk_user_id": mem["clerk_user_id"],
+            "full_name": mem["full_name"],
+            "email": mem["email"],
+            "slack_id": mem["slack_user_id"],
+            "status": mem["hr_status"],
+            "active": mem["hr_status"] == "ACTIVE",
+            "capacity_cache": mem["active_task_count"],
+            "active_task_count": mem["active_task_count"],
+            "domain_skills": mem["domain_skills"],
+            "last_synced_from": f"Team Identity Binding{skills_tag}",
+            "synced_at": now_iso,
+        }
+        try:
+            sb.table("employees").upsert(emp_row, on_conflict="org_id,full_name").execute()
+        except Exception:
+            fallback = {k: v for k, v in emp_row.items() if k not in {"domain_skills", "active_task_count"}}
+            sb.table("employees").upsert(fallback, on_conflict="org_id,full_name").execute()
+
     after = {tbl: _table_count(sb, tbl, org_id) for tbl in tables}
-    hydrated_emps = [
+    all_emps = list_employees(org_id=org_id)
+    team_bindings = [
         {
             "full_name": e.get("full_name"),
+            "clerk_user_id": e.get("clerk_user_id"),
+            "slack_id": e.get("slack_id"),
+            "email": e.get("email"),
             "status": e.get("status"),
             "domain_skills": e.get("domain_skills"),
             "active_task_count": e.get("active_task_count"),
         }
-        for e in list_employees(org_id=org_id)
+        for e in all_emps
+        if any(m["full_name"].lower() == str(e.get("full_name") or "").lower() for m in REAL_TEAM_MEMBERS)
     ]
     return {
         "org_id": org_id,
@@ -94,7 +185,8 @@ def ensure_org_seeded(org_id: str, org_name: str, force: bool = False) -> dict:
         "sec_pol_104_present": True,
         "before": before,
         "after": after,
-        "employees_preview": hydrated_emps,
+        "team_bindings": team_bindings,
+        "all_employees_count": len(all_emps),
     }
 
 

@@ -21,55 +21,20 @@ def _create_jira_issue(
     assignee: str,
     task_id: str,
     commit_message: str = "",
+    org_id: Optional[str] = None,
+    assignee_email: Optional[str] = None,
+    jira_account_id: Optional[str] = None,
 ) -> Dict[str, str]:
-    # Compatibility wrapper so tests monkeypatching agent.nodes.dispatcher.httpx.post continue to work
-    from core.config import get_settings
-    from core.evon_llm import resolve_jira_project_key
-    from connectors.jira_ops import _adf_doc, has_real_jira_creds
-
-    settings = get_settings()
-    if not has_real_jira_creds():
-        return create_jira_issue(
-            title=title,
-            description=description,
-            assignee=assignee,
-            task_id=task_id,
-            commit_message=commit_message,
-        )
-
-    project_key = resolve_jira_project_key()
-    full_desc = description or ""
-    if assignee:
-        full_desc = f"Assigned Employee: {assignee}\n\n{full_desc}".strip()
-    if commit_message:
-        full_desc = f"{full_desc}\n\nProposed Commit Message:\n{commit_message}".strip()
-
-    endpoint = f"{settings.jira_base_url.rstrip('/')}/rest/api/3/issue"
-    payload: Dict[str, Any] = {
-        "fields": {
-            "project": {"key": project_key},
-            "summary": title,
-            "description": _adf_doc(full_desc),
-            "issuetype": {"name": "Task"},
-            "labels": ["horizon-veridian", "meeting-extracted"],
-        }
-    }
-    resp = httpx.post(
-        endpoint,
-        json=payload,
-        auth=(settings.jira_email, settings.jira_api_token),
-        headers={"Accept": "application/json", "Content-Type": "application/json"},
-        timeout=15.0,
+    return create_jira_issue(
+        title=title,
+        description=description,
+        assignee=assignee,
+        task_id=task_id,
+        commit_message=commit_message,
+        org_id=org_id,
+        assignee_email=assignee_email,
+        jira_account_id=jira_account_id,
     )
-    resp.raise_for_status()
-    data = resp.json()
-    key = str(data.get("key") or f"{project_key}-0")
-    return {
-        "ticket_id": key,
-        "url": f"{settings.jira_base_url.rstrip('/')}/browse/{key}",
-        "mode": "live_jira",
-        "jira_status": "To Do",
-    }
 
 
 def _send_slack_notification(
@@ -134,6 +99,7 @@ def dispatcher_node(state: AgentState) -> dict:
                 assignee=final_assignee,
                 task_id=task_id,
                 commit_message=commit_msg,
+                org_id=org_id,
             )
             try:
                 slack_ok, slack_ch, slack_ts = _send_slack_notification(

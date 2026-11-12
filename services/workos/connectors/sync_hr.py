@@ -67,6 +67,7 @@ def sync_hr_data(org_id: str, json_path: Optional[str] = None) -> int:
             slack_id=emp.get("slackId"),
             jira_account_id=emp.get("jiraAccountId"),
         )
+        clerk_id = emp.get("clerkUserId") or emp.get("clerk_user_id") or f"user_demo_{emp.get('firstName', 'emp').lower()}"
         skills_tag = f" | skills:{','.join(validated.domain_skills)}" if validated.domain_skills else ""
         hr_rows.append({
             "id": str(uuid.uuid4()),
@@ -83,6 +84,7 @@ def sync_hr_data(org_id: str, json_path: Optional[str] = None) -> int:
         emp_rows.append({
             "id": str(uuid.uuid4()),
             "org_id": org_id,
+            "clerk_user_id": clerk_id,
             "full_name": validated.full_name,
             "email": validated.email,
             "slack_id": validated.slack_id,

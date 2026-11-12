@@ -487,8 +487,12 @@ def upsert_employee_mapping(
     slack_id: Optional[str] = None,
     jira_account_id: Optional[str] = None,
     email: Optional[str] = None,
+    domain_skills: Optional[List[str]] = None,
+    active_task_count: Optional[int] = None,
+    status: Optional[str] = None,
 ) -> Dict[str, Any]:
     now_iso = datetime.now(timezone.utc).isoformat()
+    skills_tag = f" | skills:{','.join(domain_skills)}" if domain_skills else ""
     if using_live_supabase():
         sb = _get_supabase()
         payload = {
@@ -498,11 +502,21 @@ def upsert_employee_mapping(
             "slack_id": slack_id,
             "jira_account_id": jira_account_id,
             "email": email,
+            "domain_skills": domain_skills,
+            "active_task_count": active_task_count,
+            "status": status,
             "synced_at": now_iso,
         }
+        if skills_tag:
+            payload["last_synced_from"] = f"Admin identity mapping{skills_tag}"
         payload = {k: v for k, v in payload.items() if v is not None}
-        res = sb.table("employees").upsert(payload, on_conflict="org_id,full_name").execute()
-        return (res.data or [payload])[0]
+        try:
+            res = sb.table("employees").upsert(payload, on_conflict="org_id,full_name").execute()
+            return (res.data or [payload])[0]
+        except Exception:
+            fb = {k: v for k, v in payload.items() if k not in {"domain_skills", "active_task_count"}}
+            res = sb.table("employees").upsert(fb, on_conflict="org_id,full_name").execute()
+            return (res.data or [fb])[0]
     with _local_store._lock:
         for e in _local_store.employees:
             if e["org_id"] == org_id and e["full_name"].lower() == full_name.lower():
@@ -514,6 +528,15 @@ def upsert_employee_mapping(
                     e["jira_account_id"] = jira_account_id
                 if email is not None:
                     e["email"] = email
+                if domain_skills is not None:
+                    e["domain_skills"] = domain_skills
+                if active_task_count is not None:
+                    e["active_task_count"] = active_task_count
+                    e["capacity_cache"] = active_task_count
+                if status is not None:
+                    e["status"] = status
+                if skills_tag:
+                    e["last_synced_from"] = f"Admin identity mapping{skills_tag}"
                 e["synced_at"] = now_iso
                 return dict(e)
         row = {
@@ -524,9 +547,12 @@ def upsert_employee_mapping(
             "slack_id": slack_id,
             "jira_account_id": jira_account_id,
             "email": email,
-            "status": "ACTIVE",
-            "active": True,
-            "capacity_cache": 0,
+            "status": status or "ACTIVE",
+            "active": (status or "ACTIVE") in {"ACTIVE", "NEW_HIRE"},
+            "capacity_cache": active_task_count or 0,
+            "active_task_count": active_task_count or 0,
+            "domain_skills": domain_skills or [],
+            "last_synced_from": f"Admin identity mapping{skills_tag}" if skills_tag else "Admin identity mapping",
             "synced_at": now_iso,
         }
         _local_store.employees.append(row)
@@ -560,7 +586,15 @@ def find_best_domain_replacement(
 ) -> Optional[Dict[str, Any]]:
     """Select an available ACTIVE employee matching task domain skills with the lowest active workload."""
     employees = list_employees(org_id=org_id)
-    candidates = [e for e in employees if e.get("status") == "ACTIVE"]
+    is_leadership = lambda e: (
+        "manager" in str(e.get("job_title") or "").lower()
+        or "leadership" in str(e.get("department") or "").lower()
+        or "vp" in str(e.get("job_title") or "").lower()
+        or str(e.get("full_name") or "").lower() in {"hanu aditya", "scott williamson"}
+    )
+    candidates = [e for e in employees if e.get("status") == "ACTIVE" and not is_leadership(e)]
+    if not candidates:
+        candidates = [e for e in employees if e.get("status") in {"ACTIVE", "NEW_HIRE"} and not is_leadership(e)]
     if not candidates:
         candidates = [e for e in employees if e.get("status") in {"ACTIVE", "NEW_HIRE"}]
 
