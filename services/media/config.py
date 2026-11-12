@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(_REPO_ROOT / ".env", override=False)
+load_dotenv(override=False)
 
 
 def _as_bool(value: str | None, default: bool = False) -> bool:
@@ -82,10 +85,10 @@ def get_media_settings() -> MediaSettings:
         gnani_tts_endpoint=os.getenv("GNANI_TTS_ENDPOINT", f"{gnani_base}/api/v1/tts/inference").strip(),
         gnani_prisma_model=os.getenv("GNANI_PRISMA_MODEL", "prisma-v3.0").strip(),
         gnani_timbre_model=os.getenv("GNANI_TIMBRE_MODEL", "timbre-v2.5").strip(),
-        gnani_timbre_voice=os.getenv("GNANI_TIMBRE_VOICE", "indic-male-default").strip(),
+        gnani_timbre_voice=os.getenv("GNANI_TIMBRE_VOICE", "Deepak").strip(),
         gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
-        llm_extraction_model=os.getenv("LLM_EXTRACTION_MODEL", "gemini-2.0-flash").strip(),
-        llm_fallback_model=os.getenv("LLM_FALLBACK_MODEL", "gemini-1.5-flash").strip(),
+        llm_extraction_model=os.getenv("LLM_EXTRACTION_MODEL", "gemini-3-flash-preview").strip(),
+        llm_fallback_model=os.getenv("LLM_FALLBACK_MODEL", "gemini-3.1-flash-lite-preview").strip(),
         cloudinary_cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME", "").strip(),
         cloudinary_api_key=os.getenv("CLOUDINARY_API_KEY", "").strip(),
         cloudinary_api_secret=os.getenv("CLOUDINARY_API_SECRET", "").strip(),

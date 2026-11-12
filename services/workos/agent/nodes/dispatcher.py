@@ -85,6 +85,48 @@ def _create_jira_issue(
     }
 
 
+def _resolve_live_slack_channel(client: Any, preferred_channel: str) -> str:
+    """Resolve Slack channel ID cleanly, falling back to accessible workspace channels."""
+    pref_clean = (preferred_channel or "").strip().lstrip("#").lower()
+    fallback_order = ["all-veridian-workos", "general", "new-channel", "social"]
+    try:
+        resp = client.conversations_list(
+            types="public_channel",
+            exclude_archived=True,
+            limit=200,
+        )
+        channels = resp.get("channels") or []
+    except Exception as exc:
+        logger.warning("Slack conversations_list failed (%s); using configured '%s'", exc, preferred_channel)
+        return preferred_channel
+
+    if not channels:
+        return preferred_channel
+
+    chosen = None
+    for ch in channels:
+        if (ch.get("id") or "").lower() == pref_clean or (ch.get("name") or "").lower() == pref_clean:
+            chosen = ch
+            break
+
+    if chosen is None:
+        by_name = {(ch.get("name") or "").lower(): ch for ch in channels}
+        for name in fallback_order:
+            if name in by_name:
+                chosen = by_name[name]
+                break
+        if chosen is None:
+            chosen = next((ch for ch in channels if ch.get("is_member")), channels[0])
+
+    ch_id = str(chosen.get("id") or preferred_channel)
+    if chosen and not chosen.get("is_member") and not chosen.get("is_private"):
+        try:
+            client.conversations_join(channel=ch_id)
+        except Exception as join_exc:
+            logger.debug("Slack conversations_join(%s) skipped: %s", ch_id, join_exc)
+    return ch_id
+
+
 def _send_slack_notification(
     assignee: str,
     ticket_id: str,
@@ -102,14 +144,15 @@ def _send_slack_notification(
     from slack_sdk import WebClient
 
     client = WebClient(token=settings.slack_bot_token)
+    resolved_channel = _resolve_live_slack_channel(client, channel)
     msg = client.chat_postMessage(
-        channel=channel,
+        channel=resolved_channel,
         text=(
             f"New ticket *{ticket_id}* assigned to *{assignee}*: {ticket_url}\n"
             f"> \"{quote}\""
         ),
     )
-    return True, channel, str(msg.get("ts") or "")
+    return True, resolved_channel, str(msg.get("ts") or "")
 
 
 def dispatcher_node(state: AgentState) -> dict:

@@ -59,7 +59,11 @@ class GnaniPrismaTranscriber(Transcriber):
         speaker_hints: Dict[str, str] = {}
         segments: List[TranscriptSegment] = []
 
-        for item in raw.get("segments", []):
+        raw_segments = raw.get("segments") or []
+        if not raw_segments and raw.get("transcript"):
+            raw_segments = [{"speaker": "SPEAKER_01", "start": 0.0, "end": 5.0, "text": raw["transcript"]}]
+
+        for item in raw_segments:
             speaker = str(item.get("speaker") or "SPEAKER_01")
             if item.get("speaker_hint"):
                 speaker_hints[speaker] = str(item["speaker_hint"])

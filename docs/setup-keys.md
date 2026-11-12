@@ -70,7 +70,7 @@ This document lists every environment variable required by **Horizon Veridian**,
 | `GNANI_TTS_ENDPOINT` | Media | 3 | Gnani Timbre TTS endpoint (default: `https://api.vachana.ai/api/v1/tts/inference`). |
 | `GNANI_PRISMA_MODEL` | Media | 3 | Code-mixed STT model identifier (default: `prisma-v3.0`). |
 | `GNANI_TIMBRE_MODEL` | Media | 3 | TTS model identifier (default: `timbre-v2.5`). |
-| `GNANI_TIMBRE_VOICE` | Media | 3 | Timbre voice profile (default: `indic-male-default`). |
+| `GNANI_TIMBRE_VOICE` | Media | 3 | Timbre voice profile (default: `Deepak`; also supports `Nalini`, `Pranav`, etc.). |
 | `TRANSCRIBER` | Media | 3 | Transcription provider selector: `gnani_prisma`, `whisperx`, or `google_stt`. |
 | `TTS_PROVIDER` | Media | 3 | TTS provider selector: `gnani_timbre` or `google_tts`. |
 | `EVON_MODEL_NAME` | WorkOS | 4 | Sovereign Indic reasoning model (default: `gnani-ai/evon-30b`). |
@@ -79,7 +79,8 @@ This document lists every environment variable required by **Horizon Veridian**,
 | `GEMINI_API_KEY` | Media, WorkOS | 1, 3, 4 | **Google AI Studio** (https://aistudio.google.com/) → Get API key. |
 | `NVIDIA_API_KEY` | WorkOS | 2, 4 | **NVIDIA Build** (https://build.nvidia.com/) → API key for Llama 3.1 & NV-Embed (optional fallback). |
 | `NVIDIA_BASE_URL` | WorkOS | 2, 4 | NVIDIA NIM endpoint (default: `https://integrate.api.nvidia.com/v1`). |
-| `LLM_EXTRACTION_MODEL` | WorkOS | 3 | Name of model for task extraction (default: `gemini-2.0-flash`). |
+| `LLM_EXTRACTION_MODEL` | WorkOS, Media | 3 | Name of model for task extraction (default: `gemini-3-flash-preview`). |
+| `LLM_FALLBACK_MODEL` | Media | 3 | Fallback summary model identifier (default: `gemini-3.1-flash-lite-preview`). |
 | `LLM_REASONING_MODEL` | WorkOS | 4 | Name of model for compliance resolution (default: `meta/llama-3.1-70b-instruct`). |
 | `EMBEDDING_MODEL` | WorkOS | 2, 4 | Embedding model name (default: `nvidia/nv-embedqa-e5-v5`). |
 | `EMBEDDING_DIM` | WorkOS, DB | 2 | Vector dimension integer (default: `1024`). Must match DB vector columns. |

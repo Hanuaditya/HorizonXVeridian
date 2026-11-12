@@ -8,6 +8,7 @@ seeded from ``db/seed/`` when ``DEMO_MODE=true`` and Supabase keys are unset.
 from __future__ import annotations
 
 import csv
+import importlib
 import json
 import logging
 import os
@@ -15,7 +16,10 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
+
+import httpx
 
 from core.config import get_settings
 from core.embeddings import cosine_similarity, get_embedding
@@ -189,15 +193,138 @@ def get_local_store() -> LocalDemoStore:
     return _local_store
 
 
+class _PostgrestResponse:
+    def __init__(self, data: Any = None, count: Optional[int] = None) -> None:
+        self.data = data
+        self.count = count
+
+
+class _PostgrestQuery:
+    def __init__(self, rest_url: str, headers: Dict[str, str], table: str) -> None:
+        self._url = f"{rest_url}/{table}"
+        self._headers = dict(headers)
+        self._method = "GET"
+        self._params: List[tuple[str, str]] = []
+        self._json: Any = None
+        self._want_count = False
+
+    def select(self, columns: str = "*", count: Optional[str] = None) -> "_PostgrestQuery":
+        self._method = "GET"
+        self._params.append(("select", columns))
+        if count == "exact":
+            self._want_count = True
+        return self
+
+    def insert(self, payload: Any) -> "_PostgrestQuery":
+        self._method = "POST"
+        self._json = payload
+        self._headers["Prefer"] = "return=representation"
+        return self
+
+    def upsert(self, payload: Any, on_conflict: Optional[str] = None) -> "_PostgrestQuery":
+        self._method = "POST"
+        self._json = payload
+        self._headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+        if on_conflict:
+            self._params.append(("on_conflict", on_conflict))
+        return self
+
+    def update(self, payload: Dict[str, Any]) -> "_PostgrestQuery":
+        self._method = "PATCH"
+        self._json = payload
+        self._headers["Prefer"] = "return=representation"
+        return self
+
+    def delete(self) -> "_PostgrestQuery":
+        self._method = "DELETE"
+        return self
+
+    def eq(self, col: str, val: Any) -> "_PostgrestQuery":
+        self._params.append((col, f"eq.{val}"))
+        return self
+
+    def ilike(self, col: str, pattern: str) -> "_PostgrestQuery":
+        self._params.append((col, f"ilike.{pattern}"))
+        return self
+
+    def order(self, col: str, desc: bool = False) -> "_PostgrestQuery":
+        self._params.append(("order", f"{col}.{'desc' if desc else 'asc'}"))
+        return self
+
+    def limit(self, n: int) -> "_PostgrestQuery":
+        self._params.append(("limit", str(n)))
+        return self
+
+    def execute(self) -> _PostgrestResponse:
+        if self._want_count:
+            existing = self._headers.get("Prefer", "")
+            self._headers["Prefer"] = f"{existing},count=exact".strip(",")
+        resp = httpx.request(
+            self._method,
+            self._url,
+            headers=self._headers,
+            params=self._params,
+            json=self._json,
+            timeout=20.0,
+        )
+        resp.raise_for_status()
+        data = resp.json() if resp.content else []
+        count_val: Optional[int] = None
+        if self._want_count:
+            cr = resp.headers.get("content-range", "")
+            if "/" in cr:
+                total_str = cr.split("/")[-1]
+                if total_str.isdigit():
+                    count_val = int(total_str)
+        return _PostgrestResponse(data=data, count=count_val)
+
+
+class _PostgrestRpc:
+    def __init__(self, rest_url: str, headers: Dict[str, str], fn: str, params: Dict[str, Any]) -> None:
+        self._url = f"{rest_url}/rpc/{fn}"
+        self._headers = dict(headers)
+        self._params = params
+
+    def execute(self) -> _PostgrestResponse:
+        resp = httpx.post(self._url, headers=self._headers, json=self._params, timeout=20.0)
+        resp.raise_for_status()
+        data = resp.json() if resp.content else []
+        return _PostgrestResponse(data=data)
+
+
+class _PostgrestCompatClient:
+    """Lightweight httpx-backed PostgREST client when supabase-py is absent."""
+
+    def __init__(self, supabase_url: str, service_role_key: str) -> None:
+        self._rest_url = f"{supabase_url.rstrip('/')}/rest/v1"
+        self._headers = {
+            "apikey": service_role_key,
+            "Authorization": f"Bearer {service_role_key}",
+            "Content-Type": "application/json",
+        }
+
+    def table(self, name: str) -> _PostgrestQuery:
+        return _PostgrestQuery(self._rest_url, self._headers, name)
+
+    def rpc(self, fn_name: str, params: Optional[Dict[str, Any]] = None) -> _PostgrestRpc:
+        return _PostgrestRpc(self._rest_url, self._headers, fn_name, params or {})
+
+
 def _get_supabase():
     global _supabase_client
     if _supabase_client is None:
-        from supabase import create_client
         settings = get_settings()
-        _supabase_client = create_client(
-            settings.supabase_url,
-            settings.supabase_service_role_key,
-        )
+        try:
+            supabase_mod = importlib.import_module("supabase")
+            _supabase_client = supabase_mod.create_client(
+                settings.supabase_url,
+                settings.supabase_service_role_key,
+            )
+        except ImportError:
+            _supabase_client = _PostgrestCompatClient(
+                settings.supabase_url,
+                settings.supabase_service_role_key,
+            )
     return _supabase_client
 
 

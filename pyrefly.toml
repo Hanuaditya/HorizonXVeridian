@@ -1,0 +1,3 @@
+project-excludes = ["**/node_modules", "**/.next", "**/legacy", "**/__pycache__"]
+search-path = [".", "services/workos", "services/media"]
+

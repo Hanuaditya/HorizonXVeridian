@@ -33,15 +33,18 @@ def _get_live_jira_open_tickets(assignee: str) -> Optional[int]:
     jql = f'assignee="{assignee}" AND status!=Done'
     try:
         resp = httpx.get(
-            f"{settings.jira_base_url.rstrip('/')}/rest/api/3/search",
-            params={"jql": jql, "maxResults": 0, "fields": "id"},
+            f"{settings.jira_base_url.rstrip('/')}/rest/api/3/search/jql",
+            params={"jql": jql, "maxResults": 100, "fields": "id"},
             auth=(settings.jira_email, settings.jira_api_token),
             timeout=10.0,
         )
-        if resp.status_code == 404:
+        if resp.status_code in (400, 404):
             return 0
         resp.raise_for_status()
-        return int(resp.json().get("total", 0))
+        body = resp.json()
+        if "total" in body:
+            return int(body["total"])
+        return len(body.get("issues") or [])
     except Exception as exc:
         logger.warning("capacity_checker_node: live Jira check failed (%s); using capacity cache.", exc)
         return None

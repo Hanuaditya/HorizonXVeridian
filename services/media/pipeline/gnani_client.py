@@ -102,6 +102,37 @@ def _demo_prisma_response() -> Dict[str, Any]:
     }
 
 
+_SUPPORTED_VACHANA_LANGS = {
+    "as-IN", "bn-IN", "en-IN", "gu-IN", "hi-IN", "indic-auto",
+    "kn-IN", "ml-IN", "mr-IN", "pa-IN", "ta-IN", "te-IN",
+}
+
+
+def _normalize_stt_language_code(lang: str) -> str:
+    val = (lang or "").strip()
+    if val in _SUPPORTED_VACHANA_LANGS:
+        return val
+    low = val.lower()
+    if low in {"", "auto", "auto-detect", "indic-auto"}:
+        return "indic-auto"
+    if low in {"hi-en", "hinglish", "en", "en-in"}:
+        return "en-IN"
+    if low in {"hi", "hi-in"}:
+        return "hi-IN"
+    return "indic-auto"
+
+
+def _pcm_to_wav_bytes(pcm_bytes: bytes, sample_rate: int = 48000) -> bytes:
+    """Wrap raw 16-bit mono signed PCM (returned by Gnani Timbre) in a RIFF WAV header."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm_bytes)
+    return buf.getvalue()
+
+
 class GnaniVoiceEngine:
     """Wrapper over Gnani Prisma V3.0 STT and Gnani Timbre TTS APIs."""
 
@@ -144,22 +175,30 @@ class GnaniVoiceEngine:
             raise EnvironmentError("GNANI_API_KEY is required when DEMO_MODE=false.")
 
         with open(audio_file_path, "rb") as audio:
-            files = {"file": audio}
+            files = {"audio_file": audio}
             data = {
                 "model": self.prisma_model,
-                "language": language_code,
-                "diarization": "true",
-                "output_style": "transcribe",
+                "language_code": _normalize_stt_language_code(language_code),
             }
             response = requests.post(
                 self.stt_endpoint,
                 headers=self.headers,
                 files=files,
                 data=data,
-                timeout=120,
+                timeout=20.0,
             )
             response.raise_for_status()
-            return response.json()
+            payload = response.json()
+            if "segments" not in payload and payload.get("transcript"):
+                payload["segments"] = [
+                    {
+                        "speaker": "SPEAKER_01",
+                        "start": 0.0,
+                        "end": 5.0,
+                        "text": str(payload["transcript"]).strip(),
+                    }
+                ]
+            return payload
 
     def synthesize_speech(
         self,
@@ -190,8 +229,11 @@ class GnaniVoiceEngine:
             self.tts_endpoint,
             headers=self.headers,
             json=payload,
-            timeout=60,
+            timeout=20.0,
         )
         response.raise_for_status()
-        return response.content
+        audio_bytes = response.content
+        if audio_bytes and not audio_bytes.startswith((b"RIFF", b"ID3", b"fLaC", b"OggS")):
+            return _pcm_to_wav_bytes(audio_bytes, sample_rate=48000)
+        return audio_bytes
 

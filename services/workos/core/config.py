@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Tuple
 from dotenv import load_dotenv
 
-load_dotenv()
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(_REPO_ROOT / ".env", override=False)
+load_dotenv(override=False)
 
 
 def _as_bool(value: str | None, default: bool = False) -> bool:
@@ -41,6 +44,7 @@ class WorkOSSettings:
     evon_api_key: str
     gemini_api_key: str
     llm_extraction_model: str
+    llm_fallback_model: str
     nvidia_api_key: str
     nvidia_base_url: str
     llm_reasoning_model: str
@@ -111,7 +115,8 @@ def get_settings() -> WorkOSSettings:
         ).strip(),
         evon_api_key=evon_key,
         gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
-        llm_extraction_model=os.getenv("LLM_EXTRACTION_MODEL", "gemini-2.0-flash").strip(),
+        llm_extraction_model=os.getenv("LLM_EXTRACTION_MODEL", "gemini-3-flash-preview").strip(),
+        llm_fallback_model=os.getenv("LLM_FALLBACK_MODEL", "gemini-3.1-flash-lite-preview").strip(),
         nvidia_api_key=os.getenv("NVIDIA_API_KEY", "").strip(),
         nvidia_base_url=os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1").strip(),
         llm_reasoning_model=os.getenv("LLM_REASONING_MODEL", "meta/llama-3.1-70b-instruct").strip(),

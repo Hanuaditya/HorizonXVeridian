@@ -44,6 +44,29 @@ def _has_real_key(val: str) -> bool:
     return bool(val and "placeholder" not in val.lower())
 
 
+def _extract_text_content(content: Any) -> str:
+    """Normalize LLM message content (plain str or Gemini 3 list-of-blocks) to a string."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text_val = item.get("text") or item.get("content")
+                if isinstance(text_val, str):
+                    parts.append(text_val)
+            else:
+                text_attr = getattr(item, "text", None)
+                if isinstance(text_attr, str):
+                    parts.append(text_attr)
+        return "\n".join(parts) if parts else str(content)
+    return str(content)
+
+
 def _strip_json_fences(raw: str) -> str:
     text = (raw or "").strip()
     if text.startswith("```"):
@@ -144,32 +167,45 @@ def structured_output(
                 temperature=temperature,
                 max_tokens=2048,
             )
-            content = resp.choices[0].message.content or "{}"
+            content = _extract_text_content(resp.choices[0].message.content) or "{}"
             return schema.model_validate_json(_strip_json_fences(content))
         except Exception as exc:
             logger.warning("%s failed (%s)", label, exc)
-            if not settings.demo_mode:
+            if not settings.demo_mode and not _has_real_key(settings.gemini_api_key):
                 raise
 
     if _has_real_key(settings.gemini_api_key) and not settings.demo_mode:
-        try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            from langchain_core.messages import HumanMessage, SystemMessage
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_core.messages import HumanMessage, SystemMessage
 
-            llm = ChatGoogleGenerativeAI(
-                model=settings.llm_extraction_model,
-                google_api_key=settings.gemini_api_key,
-                temperature=temperature,
-            )
-            msg = llm.invoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=full_user),
-            ])
-            return schema.model_validate_json(_strip_json_fences(str(msg.content)))
-        except Exception as exc:
-            logger.warning("Gemini fallback failed: %s", exc)
-            if not settings.demo_mode:
-                raise
+        candidates = [settings.llm_extraction_model]
+        fallback_model = getattr(settings, "llm_fallback_model", "").strip()
+        if fallback_model and fallback_model not in candidates:
+            candidates.append(fallback_model)
+
+        last_exc: Optional[Exception] = None
+        for model_name in candidates:
+            try:
+                llm = ChatGoogleGenerativeAI(
+                    model=model_name,
+                    google_api_key=settings.gemini_api_key,
+                    temperature=temperature,
+                    timeout=25,
+                    max_retries=1,
+                    thinking_budget=0,
+                )
+                msg = llm.invoke([
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=full_user),
+                ])
+                raw_text = _extract_text_content(msg.content)
+                return schema.model_validate_json(_strip_json_fences(raw_text))
+            except Exception as exc:
+                last_exc = exc
+                logger.warning("Gemini model '%s' failed (%s)", model_name, exc)
+
+        if last_exc is not None and not settings.demo_mode:
+            raise last_exc
 
     if settings.demo_mode:
         return None

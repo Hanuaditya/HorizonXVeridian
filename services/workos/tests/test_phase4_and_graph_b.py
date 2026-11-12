@@ -325,3 +325,56 @@ def test_slack_and_github_webhooks_reject_missing_secrets_and_prevent_loops(monk
     })
     assert amb_out["parsed_intent"] == "AMBIGUOUS"
     assert all(u["status"] != "DONE" for u in amb_out["tracker_updates"])
+
+
+def test_structured_output_routes_to_gemini_when_demo_false_and_evon_unset(monkeypatch):
+    from pydantic import BaseModel
+    import sys
+    import core.evon_llm as evon_llm
+
+    class _ProbeOut(BaseModel):
+        answer: str
+
+    captured = {}
+
+    class _FakeGemini:
+        def __init__(self, model: str, google_api_key: str, temperature: float = 0.1, **kwargs):
+            captured["model"] = model
+            captured["api_key"] = google_api_key
+            captured["temperature"] = temperature
+            captured["extra"] = kwargs
+
+        def invoke(self, messages):
+            # Exercise Gemini 3 list-of-blocks content payload as returned by langchain-google-genai
+            return SimpleNamespace(
+                content=[{"type": "text", "text": '{"answer": "gemini-live-ok"}', "extras": {"signature": "sig"}}]
+            )
+
+    fake_genai_mod = SimpleNamespace(ChatGoogleGenerativeAI=_FakeGemini)
+    monkeypatch.setitem(sys.modules, "langchain_google_genai", fake_genai_mod)
+
+    monkeypatch.setenv("DEMO_MODE", "false")
+    monkeypatch.setenv("EVON_API_KEY", "")
+    monkeypatch.setenv("NVIDIA_API_KEY", "")
+    monkeypatch.setenv("GEMINI_API_KEY", "test_gemini_live_key_12345")
+    monkeypatch.setenv("LLM_EXTRACTION_MODEL", "gemini-3-flash-preview")
+
+    out = evon_llm.structured_output("sys", "usr", _ProbeOut)
+    assert out is not None
+    assert out.answer == "gemini-live-ok"
+    assert captured["model"] == "gemini-3-flash-preview"
+    assert captured["api_key"] == "test_gemini_live_key_12345"
+
+    # When primary EVON_API_KEY fails while GEMINI_API_KEY is configured, fallback to Gemini works
+    class _FailingClient:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(**kwargs):
+                    raise RuntimeError("evon endpoint unreachable")
+
+    monkeypatch.setattr(evon_llm, "_pick_openai_provider", lambda: (_FailingClient(), "gnani-ai/evon-30b", "gnani-evon"))
+    fallback_out = evon_llm.structured_output("sys", "usr", _ProbeOut)
+    assert fallback_out is not None
+    assert fallback_out.answer == "gemini-live-ok"
+
