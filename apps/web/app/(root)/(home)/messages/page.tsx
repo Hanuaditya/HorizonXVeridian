@@ -177,7 +177,9 @@ function MessagesWorkspace() {
     if (!textToSend || sending) return;
 
     setSending(true);
-    setInputText('');
+    if (!customText) {
+      setInputText('');
+    }
 
     try {
       const res = await fetch(`/api/workos/messages/${encodeURIComponent(activeChannelKey)}`, {
@@ -221,32 +223,46 @@ function MessagesWorkspace() {
     }
   };
 
-  const quickReplyChips = useMemo(() => {
-    if (!isAdmin) {
+  // Handle Check-In All
+  const handleCheckInAll = async () => {
+    setPingingUser('all');
+    try {
+      await handleSendMessage('Check in with team now');
+    } finally {
+      setPingingUser(null);
+    }
+  };
+
+  const quickActions = useMemo(() => {
+    if (isAdmin) {
       return [
-        '60% done: staging environment provisioned and API integration tests running.',
-        'Blocked waiting on AppSec allowlist exception for Legacy v1 Payment API.',
-        'OAuth dashboard completed — PR https://github.com/example/repo/pull/42',
+        { label: 'Check-in now', command: 'Check in with team now' },
+        { label: 'Sprint digest', command: 'Check sprint status digest' },
       ];
     }
     return [
-      'Trigger scheduled check-in now',
-      'Approve sprint tickets and provision Jira',
-      'Check sprint status digest',
+      {
+        label: 'Check-in now',
+        command: 'Check-in update: on track with sprint deliverables',
+      },
+      {
+        label: 'Sprint digest',
+        command: 'Sprint digest: verifying completed tasks and Jira status',
+      },
     ];
   }, [isAdmin]);
 
   return (
-    <div className="flex h-[calc(100vh-100px)] w-full overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0B0C0E] text-white shadow-2xl">
+    <div className="flex h-[calc(100vh-100px)] w-full overflow-hidden rounded-2xl border border-white/[0.07] bg-dark-1 text-white shadow-2xl">
       {/* ======================================================== */}
       {/* COLUMN 1: LEFT RAIL (260px) - CONVERSATIONS & DMs       */}
       {/* ======================================================== */}
-      <aside className="flex w-[260px] flex-col border-r border-white/[0.08] bg-[#121417]">
+      <aside className="flex w-[260px] flex-col border-r border-white/[0.07] bg-dark-1">
         {/* Header & Filter */}
-        <div className="p-3.5 border-b border-white/[0.08]">
+        <div className="p-3.5 border-b border-white/[0.07]">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <div className="flex size-7 items-center justify-center rounded-lg bg-blue-600/20 text-blue-400">
+              <div className="flex size-7 items-center justify-center rounded-lg bg-blue-1/20 text-blue-400">
                 <MessageSquare className="size-4" />
               </div>
               <h2 className="text-sm font-semibold tracking-tight text-white">Messages</h2>
@@ -262,14 +278,14 @@ function MessagesWorkspace() {
               placeholder="Search conversations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-white/[0.08] bg-[#181A1F] py-1.5 pl-8 pr-2.5 text-xs text-white placeholder-white/30 focus:border-blue-500/60 focus:outline-none"
+              className="w-full rounded-lg border border-white/[0.07] bg-dark-3/70 py-1.5 pl-8 pr-2.5 text-xs text-white placeholder-white/30 focus:border-blue-1 focus:outline-none"
             />
           </div>
         </div>
 
         {/* Scrollable Channels List */}
         <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-          {/* Bots Section */}
+          {/* Bots Section (Pinned Veridian Bot) */}
           <div>
             <div className="px-2 mb-1.5 flex items-center justify-between">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
@@ -287,13 +303,13 @@ function MessagesWorkspace() {
                   className={cn(
                     'group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all',
                     isSelected
-                      ? 'bg-blue-600 text-white shadow-sm'
+                      ? 'bg-blue-1 text-white shadow-sm'
                       : 'text-white/80 hover:bg-white/[0.05] hover:text-white'
                   )}
                 >
                   <div className="relative flex size-7 shrink-0 items-center justify-center rounded-lg bg-purple-500/20 text-purple-300">
                     <Bot className="size-4" />
-                    <span className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full bg-emerald-400 ring-2 ring-[#121417]" />
+                    <span className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full bg-emerald-400 ring-2 ring-dark-1" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
@@ -351,7 +367,7 @@ function MessagesWorkspace() {
                         {initials}
                         <span
                           className={cn(
-                            'absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-[#121417]',
+                            'absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-dark-1',
                             isOnLeave ? 'bg-amber-400' : 'bg-emerald-400'
                           )}
                           title={isOnLeave ? 'On Paternity/Medical Leave' : 'Active'}
@@ -385,9 +401,9 @@ function MessagesWorkspace() {
         </div>
 
         {/* User Identity Footer */}
-        <div className="p-3 border-t border-white/[0.08] bg-[#0E1013] flex items-center justify-between">
+        <div className="p-3 border-t border-white/[0.07] bg-dark-2 flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-[10px] font-bold text-blue-300">
+            <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-blue-1/20 text-[10px] font-bold text-blue-300">
               {(user?.fullName || user?.username || 'U')[0].toUpperCase()}
             </div>
             <div className="min-w-0">
@@ -411,11 +427,11 @@ function MessagesWorkspace() {
       {/* ======================================================== */}
       {/* COLUMN 2: CENTER CANVAS - MAIN THREAD & CHAT VIEW        */}
       {/* ======================================================== */}
-      <main className="flex flex-1 flex-col min-w-0 bg-[#0B0C0E]">
+      <main className="flex flex-1 flex-col min-w-0 bg-dark-2">
         {/* Thread Header */}
-        <header className="flex h-14 items-center justify-between border-b border-white/[0.08] px-5 bg-[#121417]">
+        <header className="flex h-14 items-center justify-between border-b border-white/[0.07] px-5 bg-dark-1">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/20 text-blue-300">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-1/20 text-blue-300">
               {activeThread?.role === 'bot' ? <Bot className="size-4" /> : <User className="size-4" />}
             </div>
             <div className="min-w-0">
@@ -427,13 +443,15 @@ function MessagesWorkspace() {
                     activeThread?.role === 'bot'
                       ? 'bg-purple-500/20 text-purple-300'
                       : (activeThread?.hr_status || '').toLowerCase().includes('leave')
-                      ? 'bg-amber-500/20 text-amber-300'
+                      ? 'bg-amber-500/15 border border-amber-500/20 text-amber-300/90'
                       : 'bg-emerald-500/20 text-emerald-300'
                   )}
                 >
                   {activeThread?.role === 'bot'
                     ? 'Governance Bot'
-                    : (activeThread?.hr_status || 'Active')}
+                    : (activeThread?.hr_status || '').toLowerCase().includes('leave')
+                    ? 'On Leave'
+                    : 'Active'}
                 </span>
               </div>
               <p className="truncate text-[11px] text-white/45">
@@ -472,21 +490,20 @@ function MessagesWorkspace() {
 
         {/* Message Stream */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {loadingMessages && messages.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-xs text-white/40">
-              <RefreshCw className="mr-2 size-4 animate-spin" /> Loading message stream...
-            </div>
-          ) : messages.length === 0 ? (
+          {messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center p-8">
               <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white/40 mb-3">
                 <MessageSquare className="size-6" />
               </div>
               <h4 className="text-sm font-semibold text-white">No messages yet</h4>
               <p className="mt-1 max-w-sm text-xs text-white/50">
-                {activeThread?.role === 'bot'
-                  ? 'All automated compliance alerts, review menus, and check-in dialogues will stream here.'
-                  : `Start a direct conversation with ${activeThread?.title}. Messages are synced bidirectionally with Slack.`}
+                No messages yet — send a message or trigger a sprint check-in below.
               </p>
+              {loadingMessages && (
+                <span className="mt-2 flex items-center gap-1 text-[10px] text-white/30">
+                  <RefreshCw className="size-2.5 animate-spin" /> Checking stream...
+                </span>
+              )}
             </div>
           ) : (
             messages.map((m) => {
@@ -568,10 +585,8 @@ function MessagesWorkspace() {
                         className={cn(
                           'rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-sm whitespace-pre-wrap',
                           isCurrentUser
-                            ? 'bg-blue-600 text-white rounded-tr-sm'
-                            : isBot
-                            ? 'bg-[#181A1F] border border-white/[0.08] text-white/90 rounded-tl-sm'
-                            : 'bg-[#181A1F] border border-white/[0.08] text-white/90 rounded-tl-sm'
+                            ? 'bg-blue-1 text-white rounded-tr-sm'
+                            : 'bg-dark-3/70 border border-white/[0.07] text-white/90 rounded-tl-sm'
                         )}
                       >
                         {m.text}
@@ -580,7 +595,7 @@ function MessagesWorkspace() {
                   </div>
 
                   {isCurrentUser && (
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-xs font-bold text-white shadow-sm">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-blue-1 text-xs font-bold text-white shadow-sm">
                       {(user?.fullName || user?.username || 'Me')[0].toUpperCase()}
                     </div>
                   )}
@@ -592,19 +607,19 @@ function MessagesWorkspace() {
         </div>
 
         {/* Composer & Quick Actions */}
-        <div className="border-t border-white/[0.08] bg-[#121417] p-4">
-          {/* Quick Reply Chips */}
-          <div className="mb-2.5 flex flex-wrap gap-1.5">
-            {quickReplyChips.map((chip, idx) => (
+        <div className="border-t border-white/[0.07] bg-dark-1 p-4">
+          {/* Quick Action Pills: 2 Native Pills */}
+          <div className="mb-2.5 flex items-center gap-2">
+            {quickActions.map((action) => (
               <button
-                key={idx}
+                key={action.label}
                 type="button"
                 disabled={sending}
-                onClick={() => handleSendMessage(chip)}
-                className="flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] text-white/70 transition hover:border-blue-400/40 hover:bg-white/[0.08] hover:text-white"
+                onClick={() => handleSendMessage(action.command)}
+                className="flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-dark-3/70 px-3 py-1 text-[11px] font-medium text-white/70 transition hover:border-blue-1/50 hover:bg-white/[0.08] hover:text-white disabled:opacity-40"
               >
-                <Zap className="size-3 text-amber-400" />
-                <span className="truncate max-w-[280px]">{chip}</span>
+                <Clock className="size-3 text-blue-300" />
+                <span>{action.label}</span>
               </button>
             ))}
           </div>
@@ -616,7 +631,7 @@ function MessagesWorkspace() {
             }}
             className="flex items-end gap-2"
           >
-            <div className="flex-1 rounded-xl border border-white/[0.12] bg-[#181A1F] px-3.5 py-2.5 focus-within:border-blue-500">
+            <div className="flex-1 rounded-xl border border-white/[0.07] bg-dark-3/70 px-3.5 py-2.5 focus-within:border-blue-1">
               <textarea
                 rows={2}
                 value={inputText}
@@ -630,7 +645,7 @@ function MessagesWorkspace() {
                 placeholder={
                   activeThread?.role === 'bot'
                     ? isAdmin
-                      ? "Message Veridian Bot or enter command (e.g. 'Trigger check-in now')..."
+                      ? "Message Veridian Bot or enter command (e.g. 'Check in with team now')..."
                       : "Reply to Veridian Bot with your progress or completion evidence..."
                     : `Message ${activeThread?.title} directly (synced to Slack)...`
                 }
@@ -640,7 +655,7 @@ function MessagesWorkspace() {
             <button
               type="submit"
               disabled={sending || !inputText.trim()}
-              className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg transition hover:bg-blue-500 disabled:opacity-40"
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-1 text-white shadow-lg transition hover:bg-blue-1/90 disabled:opacity-40"
             >
               {sending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
             </button>
@@ -651,17 +666,33 @@ function MessagesWorkspace() {
       {/* ======================================================== */}
       {/* COLUMN 3: RIGHT CONTEXT DRAWER (280px)                   */}
       {/* ======================================================== */}
-      <aside className="hidden w-[280px] flex-col border-l border-white/[0.08] bg-[#121417] xl:flex">
+      <aside className="hidden w-[280px] flex-col border-l border-white/[0.07] bg-dark-1 xl:flex">
         {isAdmin ? (
           // Manager Right Panel: Live Team Sprint Status
           <div className="flex h-full flex-col">
-            <div className="border-b border-white/[0.08] p-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-white/50">
-                Team Sprint Status
-              </h3>
-              <p className="mt-0.5 text-[11px] text-white/40">
-                Live capacity, leave checks & Jira progress
-              </p>
+            <div className="border-b border-white/[0.07] p-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-white/50">
+                  Team Sprint Status
+                </h3>
+                <p className="mt-0.5 text-[11px] text-white/40">
+                  Live capacity, leave checks & Jira progress
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={pingingUser !== null}
+                onClick={handleCheckInAll}
+                className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-1/15 px-2.5 py-1 text-[11px] font-semibold text-blue-200 transition hover:bg-blue-1 hover:text-white disabled:opacity-40"
+                title="Dispatch 1-on-1 sprint check-in DMs to all active team members"
+              >
+                {pingingUser === 'all' ? (
+                  <RefreshCw className="size-3 animate-spin" />
+                ) : (
+                  <Zap className="size-3 text-blue-400" />
+                )}
+                <span>Check-In All</span>
+              </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -674,25 +705,42 @@ function MessagesWorkspace() {
                   return (
                     <div
                       key={t.channel_key}
-                      className="rounded-xl border border-white/[0.08] bg-[#181A1F] p-3 text-xs"
+                      className="group rounded-xl border border-white/[0.07] bg-dark-3/50 p-3 text-xs transition hover:border-white/[0.12]"
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-white">{t.title}</span>
-                        <span
-                          className={cn(
-                            'rounded px-1.5 py-0.2 text-[9px] font-bold uppercase',
-                            isOnLeave
-                              ? 'bg-amber-500/20 text-amber-300'
-                              : 'bg-emerald-500/20 text-emerald-300'
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={cn(
+                              'rounded px-1.5 py-0.2 text-[9px] font-bold uppercase',
+                              isOnLeave
+                                ? 'bg-amber-500/15 border border-amber-500/20 text-amber-300/90'
+                                : 'bg-emerald-500/20 text-emerald-300'
+                            )}
+                          >
+                            {isOnLeave ? 'On Leave' : 'Active'}
+                          </span>
+                          {!isOnLeave && (
+                            <button
+                              type="button"
+                              disabled={pingingUser === t.title}
+                              onClick={() => handlePingEmployee(t.title)}
+                              title={`Send check-in ping to ${t.title}`}
+                              className="rounded p-1 text-white/40 opacity-60 transition hover:bg-white/[0.08] hover:text-blue-300 hover:opacity-100 disabled:opacity-40"
+                            >
+                              {pingingUser === t.title ? (
+                                <RefreshCw className="size-3 animate-spin text-blue-400" />
+                              ) : (
+                                <Zap className="size-3" />
+                              )}
+                            </button>
                           )}
-                        >
-                          {isOnLeave ? 'On Leave' : 'Active'}
-                        </span>
+                        </div>
                       </div>
                       <p className="mt-0.5 text-[10px] text-white/45">{t.subtitle}</p>
 
                       {ticket ? (
-                        <div className="mt-2.5 rounded-lg border border-white/[0.06] bg-[#0E1013] p-2">
+                        <div className="mt-2.5 rounded-lg border border-white/[0.07] bg-dark-2 p-2">
                           <div className="flex items-center justify-between text-[10px]">
                             <span className="font-mono font-bold text-sky-300">{ticket.key}</span>
                             <span className="text-white/60">{ticket.status}</span>
@@ -701,7 +749,7 @@ function MessagesWorkspace() {
                           <div className="mt-2 flex items-center gap-2">
                             <div className="h-1.5 flex-1 rounded-full bg-white/10 overflow-hidden">
                               <div
-                                className="h-full bg-blue-500 transition-all duration-300"
+                                className="h-full bg-blue-1 transition-all duration-300"
                                 style={{ width: `${ticket.progress_pct}%` }}
                               />
                             </div>
@@ -715,22 +763,6 @@ function MessagesWorkspace() {
                           No Jira ticket active
                         </div>
                       )}
-
-                      {!isOnLeave && (
-                        <button
-                          type="button"
-                          disabled={pingingUser === t.title}
-                          onClick={() => handlePingEmployee(t.title)}
-                          className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] py-1.5 text-[10px] font-semibold text-white/70 transition hover:bg-white/[0.08] hover:text-white"
-                        >
-                          {pingingUser === t.title ? (
-                            <RefreshCw className="size-3 animate-spin" />
-                          ) : (
-                            <Zap className="size-3 text-amber-400" />
-                          )}
-                          <span>Ping Check-In DM</span>
-                        </button>
-                      )}
                     </div>
                   );
                 })}
@@ -739,7 +771,7 @@ function MessagesWorkspace() {
         ) : (
           // Employee Right Panel: My Assigned Tickets
           <div className="flex h-full flex-col">
-            <div className="border-b border-white/[0.08] p-4">
+            <div className="border-b border-white/[0.07] p-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-white/50">
                 My Assigned Tickets
               </h3>
@@ -750,7 +782,7 @@ function MessagesWorkspace() {
 
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
               {activeThread?.active_ticket ? (
-                <div className="rounded-xl border border-sky-400/30 bg-[#181A1F] p-3 text-xs">
+                <div className="rounded-xl border border-sky-400/30 bg-dark-3/50 p-3 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="font-mono font-bold text-sky-300">
                       {activeThread.active_ticket.key}
@@ -780,7 +812,7 @@ function MessagesWorkspace() {
                       href={activeThread.active_ticket.jira_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="mt-3 flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-1.5 text-[11px] font-semibold text-white shadow transition hover:bg-blue-500"
+                      className="mt-3 flex items-center justify-center gap-1.5 rounded-lg bg-blue-1 py-1.5 text-[11px] font-semibold text-white shadow transition hover:bg-blue-1/90"
                     >
                       <span>View in Jira</span>
                       <ExternalLink className="size-3" />
@@ -788,7 +820,7 @@ function MessagesWorkspace() {
                   )}
                 </div>
               ) : (
-                <div className="rounded-xl border border-white/[0.08] bg-[#181A1F] p-4 text-center">
+                <div className="rounded-xl border border-white/[0.07] bg-dark-3/50 p-4 text-center">
                   <p className="text-xs text-white/50">No tickets assigned to you currently.</p>
                   <p className="mt-1 text-[10px] text-white/30">
                     Once the Manager approves the sprint review gate, assigned tickets will appear here.

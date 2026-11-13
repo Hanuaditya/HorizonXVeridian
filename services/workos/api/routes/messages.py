@@ -35,6 +35,56 @@ from core.store import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+STALE_PERSONAS = {
+    "jason yavorska",
+    "josh lambert",
+    "aarav sharma",
+    "rohan patel",
+    "priya sen",
+    "dov hershkovitz",
+    "scott williamson",
+    "amit sharma",
+    "gabe weaver",
+}
+
+
+def _filter_and_normalize_employees(employees: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Filter out stale legacy demo personas and enforce the strict 4-person team roster with correct roles."""
+    filtered: List[Dict[str, Any]] = []
+    for emp in employees:
+        fn = str(emp.get("full_name") or emp.get("name") or "").strip()
+        fn_low = fn.lower()
+        if fn_low in STALE_PERSONAS:
+            continue
+        item = dict(emp)
+        item["full_name"] = fn
+
+        # Normalize roles and statuses
+        if "catchme" in fn_low:
+            item["role"] = "Backend Engineer"
+            item["status"] = "ACTIVE"
+            item["hr_status"] = "ACTIVE"
+            item["department"] = item.get("department") or "Platform Engineering"
+        elif "hanu" in fn_low:
+            item["role"] = "Engineering Manager"
+            item["status"] = "ACTIVE"
+            item["hr_status"] = "ACTIVE"
+            item["department"] = item.get("department") or "Engineering Leadership"
+        elif "resigo" in fn_low:
+            item["role"] = "Frontend Engineer"
+            item["status"] = "ACTIVE"
+            item["hr_status"] = "ACTIVE"
+            item["department"] = item.get("department") or "Product & Frontend Engineering"
+        elif "arjun" in fn_low:
+            item["role"] = "Backend Engineer"
+            item["status"] = "ON_PATERNITY_LEAVE"
+            item["hr_status"] = "ON_PATERNITY_LEAVE"
+            item["department"] = item.get("department") or "Platform Engineering"
+
+        filtered.append(item)
+
+    return filtered if filtered else employees
+
 
 class MessageSendRequest(BaseModel):
     text: str
@@ -71,7 +121,7 @@ async def get_unread_counts_endpoint(
 ) -> Dict[str, Any]:
     """Return total and per-channel unread message counts for the authenticated user."""
     is_manager = auth.role == "org:admin"
-    employees = list_employees(auth.org_id)
+    employees = _filter_and_normalize_employees(list_employees(auth.org_id))
     current_emp = _find_matching_employee(employees, auth.user_id, auth.email)
     emp_name = current_emp.get("full_name") if current_emp else None
 
@@ -91,7 +141,7 @@ async def list_message_threads(
 ) -> Dict[str, Any]:
     """Return role-scoped conversation list (Veridian Bot + DMs) for the authenticated Clerk user."""
     is_manager = auth.role == "org:admin"
-    employees = list_employees(auth.org_id)
+    employees = _filter_and_normalize_employees(list_employees(auth.org_id))
     current_emp = _find_matching_employee(employees, auth.user_id, auth.email)
     current_name = current_emp.get("full_name") if current_emp else ("Manager" if is_manager else "Employee")
 
@@ -159,7 +209,11 @@ async def list_message_threads(
     if is_manager:
         # Manager sees 1-on-1 channels with team members
         for emp in employees:
-            if manager_emp and emp.get("id") == manager_emp.get("id"):
+            if current_emp and emp.get("id") == current_emp.get("id"):
+                continue
+            if emp.get("clerk_user_id") and emp.get("clerk_user_id") == auth.user_id:
+                continue
+            if "manager" in str(emp.get("role") or "").lower() and "hanu" in str(emp.get("full_name") or "").lower():
                 continue
             emp_key = f"emp:{emp.get('id') or emp['full_name'].lower().replace(' ', '_')}"
             slack_uid = emp.get("slack_id") or emp.get("slack_user_id")
@@ -252,7 +306,7 @@ async def get_channel_messages(
 ) -> Dict[str, Any]:
     """Fetch chronological message stream for a channel and mark it read."""
     is_manager = auth.role == "org:admin"
-    employees = list_employees(auth.org_id)
+    employees = _filter_and_normalize_employees(list_employees(auth.org_id))
     current_emp = _find_matching_employee(employees, auth.user_id, auth.email)
     current_name = current_emp.get("full_name") if current_emp else ("Manager" if is_manager else "Employee")
 
@@ -326,7 +380,7 @@ async def send_channel_message(
 
     text_clean = body.text.strip()
     is_manager = auth.role == "org:admin"
-    employees = list_employees(auth.org_id)
+    employees = _filter_and_normalize_employees(list_employees(auth.org_id))
     current_emp = _find_matching_employee(employees, auth.user_id, auth.email)
     current_name = current_emp.get("full_name") if current_emp else ("Manager" if is_manager else "Employee")
 

@@ -31,6 +31,7 @@ from core.store import (
     record_approval,
     upsert_employee_mapping,
 )
+from api.routes.messages import _filter_and_normalize_employees
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -132,7 +133,7 @@ async def admin_list_employees(
     settings = get_settings()
     return {
         "org_id": auth.org_id,
-        "employees": list_employees(auth.org_id),
+        "employees": _filter_and_normalize_employees(list_employees(auth.org_id)),
         "config": {
             "evon_model_name": settings.evon_model_name,
             "llm_extraction_model": settings.llm_extraction_model,

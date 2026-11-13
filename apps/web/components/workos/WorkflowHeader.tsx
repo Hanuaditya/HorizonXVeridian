@@ -64,10 +64,10 @@ export default function WorkflowHeader({
   ];
 
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-[#121417] p-5 text-white shadow-xl">
+    <div className="rounded-2xl border border-white/[0.07] bg-dark-1 p-5 text-white shadow-xl">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-blue-1/20 text-blue-1 border border-blue-1/30">
             <ShieldCheck className="size-5" />
           </div>
           <div>
@@ -84,7 +84,7 @@ export default function WorkflowHeader({
                     ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
                     : phase === 'IDLE'
                     ? 'bg-white/[0.06] text-white/60 border-white/[0.08]'
-                    : 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                    : 'bg-blue-1/15 text-blue-1 border-blue-1/30'
                 )}
               >
                 {phase === 'HITL'
@@ -97,7 +97,7 @@ export default function WorkflowHeader({
               </span>
             </div>
             <p className="mt-0.5 text-xs text-white/45">
-              {meetingId ? `Meeting: ${meetingId}` : 'Sovereign Sprint Orchestrator'}
+              {meetingId ? `Meeting: ${meetingId}` : 'Automated Sprint Governance & Jira Execution'}
               {threadId ? ` · Thread: ${threadId.slice(0, 18)}...` : ''}
             </p>
           </div>
@@ -108,7 +108,7 @@ export default function WorkflowHeader({
             <button
               type="button"
               onClick={onOpenIngestModal}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:bg-blue-500"
+              className="flex items-center gap-2 rounded-xl bg-blue-1 px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:opacity-90"
             >
               <Play className="size-3.5 fill-current" />
               <span>Ingest Meeting</span>
@@ -119,7 +119,7 @@ export default function WorkflowHeader({
             <button
               type="button"
               onClick={onReset}
-              className="flex items-center gap-1.5 rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/70 transition hover:bg-white/[0.08] hover:text-white"
+              className="flex items-center gap-1.5 rounded-xl border border-white/[0.1] bg-dark-3/60 px-3 py-2 text-xs font-medium text-white/70 transition hover:bg-dark-3 hover:text-white"
             >
               <RotateCcw className="size-3.5" />
               <span>Reset</span>
@@ -136,10 +136,10 @@ export default function WorkflowHeader({
             className={cn(
               'flex items-center gap-3 rounded-xl border p-2.5 transition-all',
               st.isActive
-                ? 'border-blue-500/40 bg-blue-500/[0.08]'
+                ? 'border-blue-1/40 bg-blue-1/[0.08]'
                 : st.isComplete
                 ? 'border-emerald-500/30 bg-emerald-500/[0.04]'
-                : 'border-white/[0.06] bg-[#181A1F]/50 opacity-60'
+                : 'border-white/[0.06] bg-dark-3/50 opacity-60'
             )}
           >
             <div
@@ -148,7 +148,7 @@ export default function WorkflowHeader({
                 st.isComplete
                   ? 'bg-emerald-500 text-black'
                   : st.isActive
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-blue-1 text-white'
                   : 'bg-white/10 text-white/60'
               )}
             >

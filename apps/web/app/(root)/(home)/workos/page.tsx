@@ -274,7 +274,7 @@ function WorkOSContent() {
       {/* 2. Ingest Modal / Slide-over */}
       {showIngestModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-2xl rounded-2xl border border-white/[0.12] bg-[#121417] p-6 shadow-2xl">
+          <div className="relative w-full max-w-2xl rounded-2xl border border-white/[0.07] bg-dark-1 p-6 shadow-2xl">
             <button
               type="button"
               onClick={() => setShowIngestModal(false)}
@@ -300,7 +300,7 @@ function WorkOSContent() {
                   type="text"
                   value={meetingTitle}
                   onChange={(e) => setMeetingTitle(e.target.value)}
-                  className="w-full rounded-xl border border-white/[0.1] bg-[#181A1F] px-3.5 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded-xl border border-white/[0.07] bg-dark-3/60 px-3.5 py-2 text-xs text-white focus:border-blue-1 focus:outline-none"
                 />
               </div>
 
@@ -337,7 +337,7 @@ function WorkOSContent() {
                   rows={8}
                   value={transcript}
                   onChange={(e) => setTranscript(e.target.value)}
-                  className="w-full rounded-xl border border-white/[0.1] bg-[#181A1F] p-3 font-mono text-xs text-sky-200 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded-xl border border-white/[0.07] bg-dark-3/60 p-3 font-mono text-xs text-sky-200 focus:border-blue-1 focus:outline-none"
                 />
               </div>
 
@@ -384,7 +384,7 @@ function WorkOSContent() {
         <div className="space-y-6">
           {/* KPI Summary Strip (4 Cards) */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <div className="rounded-2xl border border-white/[0.08] bg-[#121417] p-4 shadow-sm">
+            <div className="rounded-2xl border border-white/[0.07] bg-dark-1 p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-white/50">Pending Review</span>
                 <Clock className="size-4 text-amber-400" />
@@ -397,7 +397,7 @@ function WorkOSContent() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-white/[0.08] bg-[#121417] p-4 shadow-sm">
+            <div className="rounded-2xl border border-white/[0.07] bg-dark-1 p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-white/50">Policy / Leave Flags</span>
                 <ShieldAlert className="size-4 text-rose-400" />
@@ -410,7 +410,7 @@ function WorkOSContent() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-white/[0.08] bg-[#121417] p-4 shadow-sm">
+            <div className="rounded-2xl border border-white/[0.07] bg-dark-1 p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-white/50">Active Jira Tickets</span>
                 <Ticket className="size-4 text-sky-400" />
@@ -423,7 +423,7 @@ function WorkOSContent() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-white/[0.08] bg-[#121417] p-4 shadow-sm">
+            <div className="rounded-2xl border border-white/[0.07] bg-dark-1 p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-white/50">Sprint Completion</span>
                 <CheckCircle2 className="size-4 text-emerald-400" />
@@ -442,8 +442,8 @@ function WorkOSContent() {
 
           {/* Governance Approval Queue (Pre-Approval Gate) */}
           {!isApproved && tasksList.length > 0 && (
-            <div className="rounded-2xl border border-amber-500/30 bg-[#121417] p-5 shadow-xl">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+            <div className="rounded-2xl border border-amber-500/30 bg-dark-1 p-5 shadow-xl">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] pb-4">
                 <div className="flex items-center gap-2.5">
                   <div className="flex size-7 items-center justify-center rounded-lg bg-amber-500/20 text-amber-300">
                     <Shield className="size-4" />
@@ -487,7 +487,7 @@ function WorkOSContent() {
                   return (
                     <div
                       key={task.task_id}
-                      className="rounded-xl border border-white/[0.08] bg-[#181A1F] p-4 text-xs"
+                      className="rounded-xl border border-white/[0.07] bg-dark-3/60 p-4 text-xs"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="flex-1 min-w-[280px]">
@@ -515,7 +515,7 @@ function WorkOSContent() {
                           </div>
 
                           {task.transcript_quote && (
-                            <p className="mt-1 font-mono text-[11px] text-white/50 italic bg-[#0B0C0E] p-2 rounded-lg border border-white/[0.04]">
+                            <p className="mt-1 font-mono text-[11px] text-white/50 italic bg-dark-2 p-2 rounded-lg border border-white/[0.04]">
                               {`"${task.transcript_quote}"`}
                             </p>
                           )}
@@ -537,7 +537,7 @@ function WorkOSContent() {
                         </div>
 
                         {/* Segmented Decision Control */}
-                        <div className="flex rounded-lg border border-white/[0.08] bg-[#0E1013] p-1">
+                        <div className="flex rounded-lg border border-white/[0.07] bg-dark-2 p-1">
                           {['PROCEED', 'REROUTE', 'DEFER'].map((act) => (
                             <button
                               key={act}
@@ -546,7 +546,7 @@ function WorkOSContent() {
                               className={cn(
                                 'rounded px-2.5 py-1 text-[10px] font-semibold transition',
                                 currentDecision === act
-                                  ? 'bg-blue-600 text-white shadow-sm'
+                                  ? 'bg-blue-1 text-white shadow-sm'
                                   : 'text-white/50 hover:text-white'
                               )}
                             >
@@ -563,8 +563,8 @@ function WorkOSContent() {
           )}
 
           {/* Live Jira Sprint Board (Post-Approval) */}
-          <div className="rounded-2xl border border-white/[0.08] bg-[#121417] p-5 shadow-xl">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+          <div className="rounded-2xl border border-white/[0.07] bg-dark-1 p-5 shadow-xl">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] pb-4">
               <div className="flex items-center gap-2.5">
                 <div className="flex size-7 items-center justify-center rounded-lg bg-sky-500/20 text-sky-300">
                   <Ticket className="size-4" />
@@ -579,7 +579,7 @@ function WorkOSContent() {
 
               <Link
                 href="/messages"
-                className="flex items-center gap-1.5 rounded-xl border border-white/[0.1] bg-white/[0.04] px-3.5 py-2 text-xs font-semibold text-white/80 transition hover:bg-white/[0.08] hover:text-white"
+                className="flex items-center gap-1.5 rounded-xl border border-white/[0.07] bg-dark-3/70 px-3.5 py-2 text-xs font-semibold text-white/80 transition hover:bg-white/[0.08] hover:text-white"
               >
                 <MessageSquare className="size-3.5 text-blue-400" />
                 <span>Open in Messages Workspace →</span>
@@ -588,7 +588,7 @@ function WorkOSContent() {
 
             <div className="mt-4">
               {dispatchedTickets.length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-8 text-center border border-dashed border-white/[0.08] rounded-xl">
+                <div className="flex flex-col items-center justify-center p-8 text-center border border-dashed border-white/[0.07] rounded-xl">
                   <div className="flex size-10 items-center justify-center rounded-xl bg-white/[0.04] text-white/30 mb-2">
                     <Ticket className="size-5" />
                   </div>
@@ -606,7 +606,7 @@ function WorkOSContent() {
                     return (
                       <div
                         key={t.jira_key || t.task_id}
-                        className="rounded-xl border border-white/[0.08] bg-[#181A1F] p-4 text-xs transition hover:border-white/[0.15]"
+                        className="rounded-xl border border-white/[0.07] bg-dark-3/60 p-4 text-xs transition hover:border-white/[0.15]"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
@@ -696,8 +696,8 @@ function WorkOSContent() {
         // EMPLOYEE VIEW (org:member): My Sprint Workspace
         // =========================================================================
         <div className="space-y-6">
-          <div className="rounded-2xl border border-sky-500/25 bg-[#121417] p-5 shadow-xl">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+          <div className="rounded-2xl border border-sky-500/25 bg-dark-1 p-5 shadow-xl">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] pb-4">
               <div>
                 <span className="rounded bg-sky-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300">
                   Employee Portal · My Sprint Workspace
@@ -712,7 +712,7 @@ function WorkOSContent() {
 
               <Link
                 href="/messages"
-                className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow transition hover:bg-blue-500"
+                className="flex items-center gap-2 rounded-xl bg-blue-1 px-4 py-2 text-xs font-semibold text-white shadow transition hover:bg-blue-1/90"
               >
                 <Bot className="size-4" />
                 <span>Open Veridian Bot in Messages →</span>
@@ -721,7 +721,7 @@ function WorkOSContent() {
 
             <div className="mt-4">
               {employeeTasks.length === 0 ? (
-                <div className="p-8 text-center border border-dashed border-white/[0.08] rounded-xl">
+                <div className="p-8 text-center border border-dashed border-white/[0.07] rounded-xl">
                   <CheckCircle2 className="size-8 mx-auto text-emerald-400/60 mb-2" />
                   <h4 className="text-sm font-semibold text-white">No active sprint tickets</h4>
                   <p className="mt-1 text-xs text-white/40 max-w-sm mx-auto">
@@ -737,7 +737,7 @@ function WorkOSContent() {
                     return (
                       <div
                         key={ticketKey}
-                        className="rounded-xl border border-white/[0.08] bg-[#181A1F] p-4 text-xs"
+                        className="rounded-xl border border-white/[0.07] bg-dark-3/60 p-4 text-xs"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2.5">
