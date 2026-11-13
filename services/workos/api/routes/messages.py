@@ -115,6 +115,12 @@ def _get_latest_thread(org_id: str, requested_tid: Optional[str] = None) -> Opti
     return recent[0] if recent else None
 
 
+def _resolve_user_display_name(emp: Optional[Dict[str, Any]], fallback: str) -> str:
+    if emp and emp.get("full_name"):
+        return str(emp["full_name"])
+    return fallback
+
+
 @router.get("/messages/unread")
 async def get_unread_counts_endpoint(
     auth: AuthContext = Depends(require_auth),
@@ -143,7 +149,7 @@ async def list_message_threads(
     is_manager = auth.role == "org:admin"
     employees = _filter_and_normalize_employees(list_employees(auth.org_id))
     current_emp = _find_matching_employee(employees, auth.user_id, auth.email)
-    current_name = current_emp.get("full_name") if current_emp else ("Manager" if is_manager else "Employee")
+    current_name: str = _resolve_user_display_name(current_emp, "Manager" if is_manager else "Employee")
 
     latest_snap = _get_latest_thread(auth.org_id)
     tasks_map = (latest_snap or {}).get("tasks") or {}
@@ -308,7 +314,7 @@ async def get_channel_messages(
     is_manager = auth.role == "org:admin"
     employees = _filter_and_normalize_employees(list_employees(auth.org_id))
     current_emp = _find_matching_employee(employees, auth.user_id, auth.email)
-    current_name = current_emp.get("full_name") if current_emp else ("Manager" if is_manager else "Employee")
+    current_name: str = _resolve_user_display_name(current_emp, "Manager" if is_manager else "Employee")
 
     mark_channel_read(auth.org_id, auth.user_id, channel_key)
 
@@ -409,7 +415,7 @@ async def send_channel_message(
     is_manager = auth.role == "org:admin"
     employees = _filter_and_normalize_employees(list_employees(auth.org_id))
     current_emp = _find_matching_employee(employees, auth.user_id, auth.email)
-    current_name = current_emp.get("full_name") if current_emp else ("Manager" if is_manager else "Employee")
+    current_name: str = _resolve_user_display_name(current_emp, "Manager" if is_manager else "Employee")
 
     latest_snap = _get_latest_thread(auth.org_id, body.thread_id)
     target_thread_id = (latest_snap or {}).get("thread_id") or body.thread_id or "live-sprint-sync"
@@ -576,8 +582,8 @@ async def send_channel_message(
         if not recipient_emp and employees:
             recipient_emp = employees[0]
 
-        rec_name = recipient_emp["full_name"] if recipient_emp else "Teammate"
-        rec_id = recipient_emp.get("id") if recipient_emp else "emp_unknown"
+        rec_name: str = str((recipient_emp or {}).get("full_name") or "Teammate")
+        rec_id: str = str((recipient_emp or {}).get("id") or "emp_unknown")
         rec_slack_id = recipient_emp.get("slack_id") if recipient_emp else None
 
         slack_ts = None
