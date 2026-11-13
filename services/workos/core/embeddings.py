@@ -116,7 +116,7 @@ def get_embedding(text: str, dim: Optional[int] = None) -> List[float]:
             "input_type": "query",
         }
         try:
-            with httpx.Client(timeout=15.0) as client:
+            with httpx.Client(timeout=3.0) as client:
                 resp = client.post(url, headers=headers, json=payload)
                 resp.raise_for_status()
                 emb = resp.json()["data"][0]["embedding"]

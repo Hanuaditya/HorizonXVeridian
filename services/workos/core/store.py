@@ -267,15 +267,16 @@ class _PostgrestQuery:
         if self._want_count:
             existing = self._headers.get("Prefer", "")
             self._headers["Prefer"] = f"{existing},count=exact".strip(",")
-        query_params: Any = self._params if self._params else None
-        resp = httpx.request(
-            self._method,
-            self._url,
-            headers=self._headers,
-            params=cast(Any, query_params),
-            json=self._json,
-            timeout=20.0,
-        )
+        req_kwargs: Dict[str, Any] = {
+            "method": self._method,
+            "url": self._url,
+            "headers": self._headers,
+            "json": self._json,
+            "timeout": 20.0,
+        }
+        if self._params:
+            req_kwargs["params"] = self._params
+        resp = httpx.request(**req_kwargs)
         resp.raise_for_status()
         data = resp.json() if resp.content else []
         count_val: Optional[int] = None
@@ -474,11 +475,13 @@ def list_employees(org_id: str) -> List[Dict[str, Any]]:
     for row in rows:
         item = dict(row)
         item["domain_skills"] = _extract_skills_from_row(item, seed_map)
-        item["active_task_count"] = int(
-            item.get("active_task_count")
-            if item.get("active_task_count") is not None
-            else item.get("capacity_cache") or 0
-        )
+        count_val = item.get("active_task_count")
+        if count_val is None:
+            count_val = item.get("capacity_cache")
+        try:
+            item["active_task_count"] = int(count_val) if count_val is not None else 0
+        except (ValueError, TypeError):
+            item["active_task_count"] = 0
         hydrated.append(item)
     return hydrated
 

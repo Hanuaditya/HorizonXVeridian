@@ -204,7 +204,7 @@ def _pick_openai_provider() -> Optional[tuple[OpenAI, str, str]]:
         client = OpenAI(
             api_key=settings.evon_api_key,
             base_url=settings.evon_api_base,
-            timeout=30.0,
+            timeout=8.0,
         )
         return client, settings.evon_model_name, f"gnani-evon ({settings.evon_model_name})"
 
@@ -212,7 +212,7 @@ def _pick_openai_provider() -> Optional[tuple[OpenAI, str, str]]:
         client = OpenAI(
             api_key=settings.nvidia_api_key,
             base_url=settings.nvidia_base_url,
-            timeout=30.0,
+            timeout=8.0,
         )
         return client, settings.llm_reasoning_model, f"nvidia-nim ({settings.llm_reasoning_model})"
 
@@ -291,7 +291,7 @@ def structured_output(
                         model=model_name,
                         google_api_key=settings.gemini_api_key,
                         temperature=temperature,
-                        timeout=25,
+                        timeout=8,
                         max_retries=1,
                         thinking_budget=0,
                     )
@@ -319,20 +319,14 @@ def structured_output(
 
         if last_exc is not None:
             logger.warning(
-                "All Gemini candidate models exhausted (%s). Last error: %s",
+                "All Gemini candidate models exhausted (%s). Last error: %s. Engaging deterministic fallback extractor for %s.",
                 candidates,
                 _sanitize_reason(last_exc),
+                schema.__name__,
             )
-            if _is_transient_or_outage_error(last_exc) or os.getenv("DEMO_FALLBACK", "").lower() in ("true", "1", "yes"):
-                logger.warning(
-                    "Engaging deterministic fallback extractor for %s due to upstream outage (%s)",
-                    schema.__name__,
-                    _sanitize_reason(last_exc),
-                )
-                fb = _try_deterministic_fallback(schema, user_prompt)
-                if fb is not None:
-                    return fb
-                return None
+            fb = _try_deterministic_fallback(schema, user_prompt)
+            if fb is not None:
+                return fb
             if not settings.demo_mode:
                 raise last_exc
 

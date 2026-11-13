@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx  # noqa: F401 - retained for monkeypatch compatibility in tests
 
@@ -89,7 +89,7 @@ def dispatcher_node(state: AgentState) -> dict:
         )
         final_assignee = task.get("assignee") or "UNASSIGNED"
         if task.get("resolution_action") == "REROUTE" and task.get("rerouted_assignee"):
-            final_assignee = str(task["rerouted_assignee"])
+            final_assignee = str(task.get("rerouted_assignee") or final_assignee)
         commit_msg = task.get("proposed_commit_message") or f"feat(sprint): {final_title[:64].lower()}"
 
         try:

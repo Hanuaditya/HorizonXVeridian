@@ -227,23 +227,26 @@ async def list_message_threads(
                 continue
             if emp.get("clerk_user_id") and emp.get("clerk_user_id") == auth.user_id:
                 continue
-            if "manager" in str(emp.get("role") or "").lower() and "hanu" in str(emp.get("full_name") or "").lower():
+            emp_name = str(emp.get("full_name") or "Employee")
+            emp_role = str(emp.get("role") or "").lower()
+            if "manager" in emp_role and "hanu" in emp_name.lower():
                 continue
-            emp_key = f"emp:{emp.get('id') or emp['full_name'].lower().replace(' ', '_')}"
+            eid = str(emp.get("id") or "")
+            emp_key = f"emp:{eid or emp_name.lower().replace(' ', '_')}"
             slack_uid = emp.get("slack_id") or emp.get("slack_user_id")
             ticket = _find_emp_ticket(emp)
-            emp_hr = emp.get("hr_status") or emp.get("status") or "ACTIVE"
+            emp_hr = str(emp.get("hr_status") or emp.get("status") or "ACTIVE")
             is_on_leave = "leave" in emp_hr.lower()
             threads.append({
                 "channel_key": emp_key,
-                "title": emp["full_name"],
-                "subtitle": emp.get("role") or "Engineer",
+                "title": emp_name,
+                "subtitle": str(emp.get("role") or "Engineer"),
                 "role": "employee",
                 "hr_status": emp_hr,
                 "status": "ON_LEAVE" if is_on_leave else (ticket.get("status") if ticket else "IDLE"),
                 "ticket_key": ticket.get("key") if ticket else None,
                 "progress_pct": ticket.get("progress_pct", 0) if ticket else 0,
-                "department": emp.get("department") or "Engineering",
+                "department": str(emp.get("department") or "Engineering"),
                 "slack_user_id": slack_uid,
                 "slack_deep_link": get_slack_dm_link(slack_uid),
                 "jira_account_id": emp.get("jira_account_id"),
@@ -251,7 +254,7 @@ async def list_message_threads(
                 "active_ticket": ticket,
                 "member": {
                     "id": emp.get("id"),
-                    "name": emp["full_name"],
+                    "name": emp_name,
                     "email": emp.get("email"),
                     "role": emp.get("role"),
                     "hr_status": emp_hr,
@@ -261,12 +264,13 @@ async def list_message_threads(
     else:
         # Employee sees channel with Manager
         if manager_emp:
+            mgr_name = str(manager_emp.get("full_name") or "Engineering Manager")
             mgr_key = f"mgr:{manager_emp.get('id') or 'manager'}"
             mgr_slack_uid = manager_emp.get("slack_id")
             threads.append({
                 "channel_key": mgr_key,
-                "title": manager_emp["full_name"],
-                "subtitle": manager_emp.get("role") or "Engineering Manager",
+                "title": mgr_name,
+                "subtitle": str(manager_emp.get("role") or "Engineering Manager"),
                 "role": "manager",
                 "hr_status": "ACTIVE",
                 "status": "ACTIVE",
@@ -276,9 +280,9 @@ async def list_message_threads(
                 "slack_deep_link": get_slack_dm_link(mgr_slack_uid),
                 "unread_count": by_channel.get(mgr_key, 0),
                 "member": {
-                    "name": manager_emp["full_name"],
+                    "name": mgr_name,
                     "email": manager_emp.get("email"),
-                    "role": manager_emp.get("role") or "Engineering Manager",
+                    "role": str(manager_emp.get("role") or "Engineering Manager"),
                     "hr_status": "ACTIVE",
                 },
             })
@@ -288,15 +292,17 @@ async def list_message_threads(
                 continue
             if manager_emp and peer.get("id") == manager_emp.get("id"):
                 continue
-            peer_key = f"peer:{peer.get('id') or peer['full_name'].lower().replace(' ', '_')}"
+            peer_name = str(peer.get("full_name") or "Teammate")
+            pid = str(peer.get("id") or "")
+            peer_key = f"peer:{pid or peer_name.lower().replace(' ', '_')}"
             peer_slack_uid = peer.get("slack_id")
             ticket = _find_emp_ticket(peer)
-            peer_hr = peer.get("hr_status") or peer.get("status") or "ACTIVE"
+            peer_hr = str(peer.get("hr_status") or peer.get("status") or "ACTIVE")
             peer_on_leave = "leave" in peer_hr.lower()
             threads.append({
                 "channel_key": peer_key,
-                "title": peer["full_name"],
-                "subtitle": peer.get("role") or "Engineer",
+                "title": peer_name,
+                "subtitle": str(peer.get("role") or "Engineer"),
                 "role": "peer",
                 "hr_status": peer_hr,
                 "status": "ON_LEAVE" if peer_on_leave else (ticket.get("status") if ticket else "IDLE"),
@@ -308,7 +314,7 @@ async def list_message_threads(
                 "active_ticket": ticket,
                 "member": {
                     "id": peer.get("id"),
-                    "name": peer["full_name"],
+                    "name": peer_name,
                     "email": peer.get("email"),
                     "role": peer.get("role"),
                     "hr_status": peer_hr,
@@ -409,8 +415,10 @@ async def get_channel_messages(
         # Lookup recipient's Slack ID for deep link
         target_slack_id = None
         for emp in employees:
-            emp_key_token = emp.get("id") or emp["full_name"].lower().replace(" ", "_")
-            if emp_key_token in channel_key:
+            efn = str(emp.get("full_name") or "")
+            eid = str(emp.get("id") or "")
+            emp_key_token = eid or efn.lower().replace(" ", "_")
+            if emp_key_token and emp_key_token in channel_key:
                 target_slack_id = emp.get("slack_id")
                 break
         slack_deep_link = get_slack_dm_link(target_slack_id)
@@ -667,12 +675,14 @@ async def send_channel_message(
                 tasks = snap.get("tasks") or {}
                 target_person = None
                 for emp in employees:
-                    if emp["full_name"].lower() in cmd_low or (emp.get("id") and emp["id"].lower() in cmd_low):
+                    efn = str(emp.get("full_name") or "")
+                    eid = str(emp.get("id") or "")
+                    if (efn and efn.lower() in cmd_low) or (eid and eid.lower() in cmd_low):
                         target_person = emp
                         break
 
                 if target_person:
-                    p_name = target_person["full_name"]
+                    p_name = str(target_person.get("full_name") or "Employee")
                     p_tasks = [
                         t for t in tasks.values()
                         if p_name.lower() in str(t.get("rerouted_assignee") or t.get("assignee") or "").lower()
@@ -755,8 +765,10 @@ async def send_channel_message(
         # Direct 1-on-1 Message Channel
         recipient_emp = None
         for emp in employees:
-            emp_key_token = str(emp.get("id") or emp["full_name"].lower().replace(" ", "_"))
-            if emp_key_token in channel_key:
+            efn = str(emp.get("full_name") or "")
+            eid = str(emp.get("id") or "")
+            emp_key_token = eid or efn.lower().replace(" ", "_")
+            if emp_key_token and emp_key_token in channel_key:
                 recipient_emp = emp
                 break
         if not recipient_emp and employees:

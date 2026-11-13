@@ -42,7 +42,7 @@ def state_update_node(state: AgentState) -> dict:
             and raw_decision.upper() == "APPROVE"
             and task.get("rerouted_assignee")
         ):
-            new_assignee = task.get("rerouted_assignee") or task.get("assignee")
+            new_assignee = str(task.get("rerouted_assignee") or task.get("assignee") or "Unassigned")
             updates[task_id] = Task(
                 status="READY",
                 resolution_action="REROUTE",

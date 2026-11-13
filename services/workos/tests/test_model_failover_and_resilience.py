@@ -154,3 +154,49 @@ def test_demo_fallback_flag_deterministic_speaker_turn_extraction(monkeypatch):
     assert any("database" in t or "optimize" in t or "pool" in t for t in task_titles)
     assert any("login" in t or "frontend" in t or "error boundary" in t for t in task_titles)
     assert len(out.key_decisions) >= 1
+
+
+def test_ingestion_background_graph_timeout_engages_deterministic_hitl_fallback(monkeypatch):
+    import asyncio
+    from api.routes.meeting import run_graph_a_background
+    from core.store import get_thread_snapshot
+
+    thread_id = f"test-timeout-{int(time.time())}"
+    initial_state = {
+        "org_id": "org_test_timeout",
+        "meeting_id": "mtg_timeout_123",
+        "thread_id": thread_id,
+        "title": "Hinglish Sprint Timeout Test",
+        "transcript": (
+            "[00:01 - Dov]: Arjun, deploy Elastic cluster to AWS prod by Thursday.\n"
+            "[00:02 - Amit]: Arjun is on paternity leave! Scott cites SEC-POL-089 14-day staging bake and Rs 2.5L cost."
+        ),
+        "transcript_segments": [],
+        "participants": [],
+    }
+
+    # Simulate graph.invoke hanging / timing out
+    def _slow_graph_invoke(*args, **kwargs):
+        raise TimeoutError("Simulated LLM network timeout after 12s")
+
+    class _HangingGraph:
+        def invoke(self, *args, **kwargs):
+            return _slow_graph_invoke(*args, **kwargs)
+
+    monkeypatch.setattr("api.routes.meeting.get_graph_a", lambda: _HangingGraph())
+
+    # Execute background worker
+    asyncio.run(run_graph_a_background(thread_id, initial_state))
+
+    # Verify that the thread snapshot cleanly transitioned to HITL, NEVER left in INGESTING
+    snap = get_thread_snapshot(thread_id)
+    assert snap is not None
+    assert snap.get("phase") == "HITL", f"Expected phase 'HITL' but got {snap.get('phase')}"
+    assert snap.get("manager_approved") is False
+    assert len(snap.get("tasks", {})) > 0
+
+    # Verify 4-way firewall applied
+    resolutions = snap.get("resolutions", [])
+    actions = [r.get("suggested_action") for r in resolutions]
+    assert "REROUTE" in actions or "REFRAME" in actions
+
