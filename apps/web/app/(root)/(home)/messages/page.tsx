@@ -3,21 +3,24 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { OrgOnboardingGuard, useAppAuth } from '@/providers/AuthBridge';
 import { useAgentStream } from '@/lib/sse';
+import Link from 'next/link';
 import {
   AlertTriangle,
   Bot,
-  Check,
   CheckCircle2,
   ChevronRight,
   Clock,
   ExternalLink,
   MessageSquare,
+  PanelRightClose,
+  PanelRightOpen,
   RefreshCw,
   Search,
   Send,
   Shield,
   ShieldAlert,
   Sparkles,
+  Ticket,
   User,
   Zap,
 } from 'lucide-react';
@@ -88,6 +91,7 @@ function MessagesWorkspace() {
   const [loadingMessages, setLoadingMessages] = useState<boolean>(false);
   const [sending, setSending] = useState<boolean>(false);
   const [pingingUser, setPingingUser] = useState<string | null>(null);
+  const [showRightDrawer, setShowRightDrawer] = useState<boolean>(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -168,10 +172,42 @@ function MessagesWorkspace() {
     );
   }, [threads, searchQuery]);
 
-  const botThreads = useMemo(() => filteredThreads.filter((t) => t.role === 'bot'), [filteredThreads]);
-  const dmThreads = useMemo(() => filteredThreads.filter((t) => t.role !== 'bot'), [filteredThreads]);
+  const currentUserName = (user?.fullName || user?.username || '').toLowerCase();
+  const currentUserEmail = (user?.email || '').toLowerCase();
+  const currentUserId = (userId || '').toLowerCase();
 
-  // Handle Send
+  const botThreads = useMemo(
+    () => filteredThreads.filter((t) => t.role === 'bot'),
+    [filteredThreads]
+  );
+
+  // List ONLY other team members in Direct Messages (never list logged-in user to themselves)
+  const dmThreads = useMemo(() => {
+    return filteredThreads.filter((t) => {
+      if (t.role === 'bot') return false;
+      const titleLow = t.title.toLowerCase();
+      const emailLow = (t.member?.email || '').toLowerCase();
+      const idLow = (t.member?.id || '').toLowerCase();
+
+      if (
+        currentUserName &&
+        (titleLow === currentUserName ||
+          titleLow.includes(currentUserName) ||
+          currentUserName.includes(titleLow))
+      ) {
+        return false;
+      }
+      if (currentUserEmail && emailLow === currentUserEmail) {
+        return false;
+      }
+      if (currentUserId && idLow && idLow.includes(currentUserId)) {
+        return false;
+      }
+      return true;
+    });
+  }, [filteredThreads, currentUserName, currentUserEmail, currentUserId]);
+
+  // Handle Send Message
   const handleSendMessage = async (customText?: string) => {
     const textToSend = (customText ?? inputText).trim();
     if (!textToSend || sending) return;
@@ -233,59 +269,60 @@ function MessagesWorkspace() {
     }
   };
 
+  // Quick Action Prompts
   const quickActions = useMemo(() => {
     if (isAdmin) {
       return [
         { label: 'Check-in now', command: 'Check in with team now' },
-        { label: 'Sprint digest', command: 'Check sprint status digest' },
+        { label: 'Sprint status digest', command: 'Check sprint status digest' },
       ];
     }
     return [
       {
-        label: 'Check-in now',
-        command: 'Check-in update: on track with sprint deliverables',
+        label: '60% completed',
+        command: '60% done: staging environment provisioned and API integration tests running.',
       },
       {
-        label: 'Sprint digest',
-        command: 'Sprint digest: verifying completed tasks and Jira status',
+        label: 'Completed + PR link',
+        command: 'OAuth dashboard completed — PR https://github.com/example/repo/pull/42',
       },
     ];
   }, [isAdmin]);
 
+  const activeIsOnLeave = (activeThread?.hr_status || '').toLowerCase().includes('leave');
+
   return (
-    <div className="flex h-[calc(100vh-100px)] w-full overflow-hidden rounded-2xl border border-white/[0.07] bg-dark-1 text-white shadow-2xl">
+    <div className="flex h-full w-full overflow-hidden bg-dark-1 text-white rounded-none border-0">
       {/* ======================================================== */}
-      {/* COLUMN 1: LEFT RAIL (260px) - CONVERSATIONS & DMs       */}
+      {/* COLUMN 1: LEFT CONVERSATION RAIL (290px)                 */}
       {/* ======================================================== */}
-      <aside className="flex w-[260px] flex-col border-r border-white/[0.07] bg-dark-1">
-        {/* Header & Filter */}
-        <div className="p-3.5 border-b border-white/[0.07]">
+      <aside className="flex w-[290px] shrink-0 flex-col border-r border-white/[0.08] bg-dark-1 h-full">
+        {/* Header */}
+        <div className="px-4 pt-4 pb-3 border-b border-white/[0.08]">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <div className="flex size-7 items-center justify-center rounded-lg bg-blue-1/20 text-blue-400">
-                <MessageSquare className="size-4" />
-              </div>
-              <h2 className="text-sm font-semibold tracking-tight text-white">Messages</h2>
+              <h2 className="text-xl font-semibold tracking-tight text-white">Messages</h2>
             </div>
             <span className="rounded bg-white/[0.06] px-2 py-0.5 text-[10px] font-mono text-white/50">
-              {isAdmin ? 'Manager' : 'Employee'}
+              {isAdmin ? 'Manager' : 'Member'}
             </span>
           </div>
+
           <div className="relative">
-            <Search className="absolute left-2.5 top-2 size-3.5 text-white/40" />
+            <Search className="absolute left-3 top-2.5 size-4 text-white/40" />
             <input
               type="text"
-              placeholder="Search conversations..."
+              placeholder="Search messages..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-white/[0.07] bg-dark-3/70 py-1.5 pl-8 pr-2.5 text-xs text-white placeholder-white/30 focus:border-blue-1 focus:outline-none"
+              className="w-full rounded-full border border-white/[0.07] bg-dark-2/90 py-2 pl-9 pr-3 text-sm text-white placeholder-white/35 focus:border-blue-1 focus:outline-none transition"
             />
           </div>
         </div>
 
-        {/* Scrollable Channels List */}
-        <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-          {/* Bots Section (Pinned Veridian Bot) */}
+        {/* Conversation List */}
+        <div className="flex-1 overflow-y-auto px-2.5 py-3 space-y-4">
+          {/* Section: Governance Bot */}
           <div>
             <div className="px-2 mb-1.5 flex items-center justify-between">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
@@ -293,35 +330,48 @@ function MessagesWorkspace() {
               </span>
               <Sparkles className="size-3 text-purple-400/60" />
             </div>
+
             {botThreads.map((t) => {
               const isSelected = activeChannelKey === t.channel_key;
+              const lastMsgText =
+                messages.length > 0 && activeChannelKey === t.channel_key
+                  ? messages[messages.length - 1].text
+                  : 'Automated Sprint Governance & Jira Execution';
+
               return (
                 <button
                   key={t.channel_key}
                   type="button"
                   onClick={() => setActiveChannelKey(t.channel_key)}
                   className={cn(
-                    'group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all',
+                    'group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all',
                     isSelected
                       ? 'bg-blue-1 text-white shadow-sm'
                       : 'text-white/80 hover:bg-white/[0.05] hover:text-white'
                   )}
                 >
-                  <div className="relative flex size-7 shrink-0 items-center justify-center rounded-lg bg-purple-500/20 text-purple-300">
-                    <Bot className="size-4" />
-                    <span className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full bg-emerald-400 ring-2 ring-dark-1" />
+                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-purple-500/20 text-purple-300">
+                    <Bot className="size-5" />
+                    <span className="absolute bottom-0 right-0 size-2.5 rounded-full bg-emerald-400 ring-2 ring-dark-1" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <p className="truncate text-xs font-semibold">{t.title}</p>
+                      <p className="truncate text-sm font-semibold">{t.title}</p>
                       {t.unread_count && t.unread_count > 0 ? (
                         <span className="rounded-full bg-emerald-500 px-1.5 py-0.2 text-[10px] font-bold text-black tabular-nums">
                           {t.unread_count}
                         </span>
-                      ) : null}
+                      ) : (
+                        <span className="text-[10px] font-medium opacity-50">Now</span>
+                      )}
                     </div>
-                    <p className={cn('truncate text-[10px]', isSelected ? 'text-white/80' : 'text-white/45')}>
-                      {t.subtitle}
+                    <p
+                      className={cn(
+                        'truncate text-xs mt-0.5',
+                        isSelected ? 'text-white/85' : 'text-white/45'
+                      )}
+                    >
+                      {lastMsgText}
                     </p>
                   </div>
                 </button>
@@ -329,7 +379,7 @@ function MessagesWorkspace() {
             })}
           </div>
 
-          {/* Direct Messages Section */}
+          {/* Section: Direct Messages */}
           <div>
             <div className="px-2 mb-1.5 flex items-center justify-between">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
@@ -337,9 +387,10 @@ function MessagesWorkspace() {
               </span>
               <span className="text-[10px] font-mono text-white/30">{dmThreads.length}</span>
             </div>
+
             <div className="space-y-1">
               {dmThreads.length === 0 ? (
-                <p className="px-2 text-[11px] text-white/30 italic">No team DMs active</p>
+                <p className="px-2 text-xs text-white/30 italic">No teammates found</p>
               ) : (
                 dmThreads.map((t) => {
                   const isSelected = activeChannelKey === t.channel_key;
@@ -357,38 +408,45 @@ function MessagesWorkspace() {
                       type="button"
                       onClick={() => setActiveChannelKey(t.channel_key)}
                       className={cn(
-                        'group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all',
+                        'group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all',
                         isSelected
-                          ? 'bg-white/[0.12] text-white'
+                          ? 'bg-blue-1 text-white shadow-sm'
                           : 'text-white/70 hover:bg-white/[0.05] hover:text-white'
                       )}
                     >
-                      <div className="relative flex size-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.08] text-xs font-bold text-white/90">
+                      <div className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-dark-3 border border-white/[0.08] text-xs font-bold text-white">
                         {initials}
                         <span
                           className={cn(
-                            'absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-dark-1',
+                            'absolute bottom-0 right-0 size-2.5 rounded-full ring-2 ring-dark-1',
                             isOnLeave ? 'bg-amber-400' : 'bg-emerald-400'
                           )}
-                          title={isOnLeave ? 'On Paternity/Medical Leave' : 'Active'}
+                          title={isOnLeave ? 'On Leave' : 'Active'}
                         />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <p className="truncate text-xs font-medium">{t.title}</p>
+                          <p className="truncate text-sm font-medium text-white">{t.title}</p>
                           {t.unread_count && t.unread_count > 0 ? (
                             <span className="rounded-full bg-emerald-500 px-1.5 py-0.2 text-[10px] font-bold text-black tabular-nums">
                               {t.unread_count}
                             </span>
                           ) : null}
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 mt-0.5">
                           {t.active_ticket ? (
-                            <span className="rounded bg-sky-500/15 px-1 py-0.2 font-mono text-[9px] font-semibold text-sky-300">
-                              {t.active_ticket.key}
+                            <span className="truncate text-xs text-sky-300 font-mono">
+                              {t.active_ticket.key} • {t.active_ticket.title}
                             </span>
                           ) : (
-                            <span className="truncate text-[10px] text-white/40">{t.subtitle}</span>
+                            <span
+                              className={cn(
+                                'truncate text-xs',
+                                isSelected ? 'text-white/80' : 'text-white/45'
+                              )}
+                            >
+                              {t.subtitle || (isOnLeave ? 'On Leave' : 'Active')}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -401,9 +459,9 @@ function MessagesWorkspace() {
         </div>
 
         {/* User Identity Footer */}
-        <div className="p-3 border-t border-white/[0.07] bg-dark-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-blue-1/20 text-[10px] font-bold text-blue-300">
+        <div className="p-3.5 border-t border-white/[0.08] bg-dark-1 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-1/20 text-xs font-bold text-blue-300">
               {(user?.fullName || user?.username || 'U')[0].toUpperCase()}
             </div>
             <div className="min-w-0">
@@ -417,7 +475,7 @@ function MessagesWorkspace() {
             type="button"
             onClick={loadThreads}
             title="Refresh Threads"
-            className="rounded p-1 text-white/40 hover:bg-white/[0.08] hover:text-white"
+            className="rounded p-1.5 text-white/40 hover:bg-white/[0.08] hover:text-white transition"
           >
             <RefreshCw className="size-3.5" />
           </button>
@@ -425,14 +483,26 @@ function MessagesWorkspace() {
       </aside>
 
       {/* ======================================================== */}
-      {/* COLUMN 2: CENTER CANVAS - MAIN THREAD & CHAT VIEW        */}
+      {/* COLUMN 2: CENTER CONVERSATION STREAM                     */}
       {/* ======================================================== */}
-      <main className="flex flex-1 flex-col min-w-0 bg-dark-2">
-        {/* Thread Header */}
-        <header className="flex h-14 items-center justify-between border-b border-white/[0.07] px-5 bg-dark-1">
+      <main className="flex flex-1 flex-col h-full bg-dark-2/35 min-w-0">
+        {/* Flush Top Header */}
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.08] px-6 bg-dark-1/80 backdrop-blur-sm">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-1/20 text-blue-300">
-              {activeThread?.role === 'bot' ? <Bot className="size-4" /> : <User className="size-4" />}
+            <div className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-dark-3 border border-white/[0.08] text-white">
+              {activeThread?.role === 'bot' ? (
+                <Bot className="size-5 text-purple-300" />
+              ) : (
+                <span className="text-xs font-bold">
+                  {(activeThread?.title || 'U')[0].toUpperCase()}
+                </span>
+              )}
+              <span
+                className={cn(
+                  'absolute bottom-0 right-0 size-2.5 rounded-full ring-2 ring-dark-1',
+                  activeIsOnLeave ? 'bg-amber-400' : 'bg-emerald-400'
+                )}
+              />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -442,40 +512,46 @@ function MessagesWorkspace() {
                     'rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider',
                     activeThread?.role === 'bot'
                       ? 'bg-purple-500/20 text-purple-300'
-                      : (activeThread?.hr_status || '').toLowerCase().includes('leave')
-                      ? 'bg-amber-500/15 border border-amber-500/20 text-amber-300/90'
+                      : activeIsOnLeave
+                      ? 'bg-amber-500/15 border border-amber-500/20 text-amber-300'
                       : 'bg-emerald-500/20 text-emerald-300'
                   )}
                 >
                   {activeThread?.role === 'bot'
-                    ? 'Governance Bot'
-                    : (activeThread?.hr_status || '').toLowerCase().includes('leave')
+                    ? 'Verified Bot'
+                    : activeIsOnLeave
                     ? 'On Leave'
                     : 'Active'}
                 </span>
               </div>
-              <p className="truncate text-[11px] text-white/45">
-                {activeThread?.subtitle || 'Direct Conversation'}
+              <p className="truncate text-xs text-white/45">
+                {activeThread?.role === 'bot'
+                  ? 'Online • Governance & Sprint Bot'
+                  : `${activeIsOnLeave ? 'On Leave' : 'Active'} • ${activeThread?.subtitle || 'Platform Engineer'}`}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {activeThread?.active_ticket && (
-              <a
-                href={activeThread.active_ticket.jira_url || '#'}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/10 px-2.5 py-1 text-xs font-mono font-medium text-sky-300 transition hover:bg-sky-500/20"
-              >
-                <span>{activeThread.active_ticket.key}</span>
-                <span className="rounded bg-sky-500/20 px-1 py-0.2 text-[9px]">
-                  {activeThread.active_ticket.status}
-                </span>
-                <ExternalLink className="size-3" />
-              </a>
-            )}
+            {/* Quick Check-In Trigger */}
+            <button
+              type="button"
+              disabled={pingingUser !== null}
+              onClick={() => {
+                if (activeThread?.role === 'bot') {
+                  handleCheckInAll();
+                } else if (activeThread?.title) {
+                  handlePingEmployee(activeThread.title);
+                }
+              }}
+              className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-1/15 px-3 py-1.5 text-xs font-semibold text-blue-200 transition hover:bg-blue-1 hover:text-white disabled:opacity-40"
+              title="Trigger sprint check-in"
+            >
+              <Zap className="size-3.5 text-blue-400" />
+              <span>Check-In</span>
+            </button>
 
+            {/* Open in Slack */}
             <a
               href={activeThread?.slack_deep_link || 'https://app.slack.com/client'}
               target="_blank"
@@ -485,13 +561,34 @@ function MessagesWorkspace() {
               <span>Open in Slack</span>
               <ExternalLink className="size-3 text-white/50" />
             </a>
+
+            {/* Toggle Right Drawer */}
+            <button
+              type="button"
+              onClick={() => setShowRightDrawer((prev) => !prev)}
+              title={showRightDrawer ? 'Hide Profile Drawer' : 'Show Profile Drawer'}
+              className="rounded-lg p-2 text-white/50 hover:bg-white/[0.08] hover:text-white transition"
+            >
+              {showRightDrawer ? (
+                <PanelRightClose className="size-4" />
+              ) : (
+                <PanelRightOpen className="size-4" />
+              )}
+            </button>
           </div>
         </header>
 
-        {/* Message Stream */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {/* Message Thread */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {/* Centered Date Separator Pill */}
+          <div className="flex items-center justify-center my-2">
+            <span className="rounded-full border border-white/[0.07] bg-dark-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              TODAY
+            </span>
+          </div>
+
           {messages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center text-center p-8">
+            <div className="flex h-64 flex-col items-center justify-center text-center p-8">
               <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white/40 mb-3">
                 <MessageSquare className="size-6" />
               </div>
@@ -523,18 +620,18 @@ function MessagesWorkspace() {
                   {!isCurrentUser && (
                     <div
                       className={cn(
-                        'flex size-8 shrink-0 items-center justify-center rounded-xl text-xs font-bold shadow-sm',
+                        'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-sm',
                         isBot
                           ? 'bg-purple-600/30 text-purple-200 border border-purple-500/30'
-                          : 'bg-white/[0.08] text-white/80 border border-white/[0.1]'
+                          : 'bg-dark-3 text-white/80 border border-white/[0.1]'
                       )}
                     >
                       {isBot ? <Bot className="size-4" /> : (m.sender || 'U')[0].toUpperCase()}
                     </div>
                   )}
 
-                  <div className={cn('flex max-w-[82%] flex-col', isCurrentUser ? 'items-end' : 'items-start')}>
-                    <div className="mb-1 flex items-center gap-2 text-[10px] text-white/40">
+                  <div className={cn('flex max-w-[72%] flex-col', isCurrentUser ? 'items-end' : 'items-start')}>
+                    <div className="mb-1 flex items-center gap-2 text-[11px] text-white/40">
                       <span className="font-semibold text-white/70">{m.sender || 'Sender'}</span>
                       <span>·</span>
                       <span>
@@ -549,7 +646,7 @@ function MessagesWorkspace() {
                       )}
                     </div>
 
-                    {/* Message Bubble or Structured Card */}
+                    {/* Message Bubble */}
                     {isAlert ? (
                       <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-3.5 text-xs text-rose-200 shadow-md">
                         <div className="flex items-center gap-2 font-semibold text-rose-300 mb-1.5">
@@ -583,22 +680,16 @@ function MessagesWorkspace() {
                     ) : (
                       <div
                         className={cn(
-                          'rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-sm whitespace-pre-wrap',
+                          'rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm whitespace-pre-wrap',
                           isCurrentUser
                             ? 'bg-blue-1 text-white rounded-tr-sm'
-                            : 'bg-dark-3/70 border border-white/[0.07] text-white/90 rounded-tl-sm'
+                            : 'bg-dark-2 border border-white/[0.07] text-slate-100 rounded-tl-sm'
                         )}
                       >
                         {m.text}
                       </div>
                     )}
                   </div>
-
-                  {isCurrentUser && (
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-blue-1 text-xs font-bold text-white shadow-sm">
-                      {(user?.fullName || user?.username || 'Me')[0].toUpperCase()}
-                    </div>
-                  )}
                 </div>
               );
             })
@@ -606,9 +697,9 @@ function MessagesWorkspace() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Composer & Quick Actions */}
-        <div className="border-t border-white/[0.07] bg-dark-1 p-4">
-          {/* Quick Action Pills: 2 Native Pills */}
+        {/* Flush Bottom Composer */}
+        <div className="border-t border-white/[0.08] bg-dark-1 px-5 py-3.5">
+          {/* Quick-Prompt Pills */}
           <div className="mb-2.5 flex items-center gap-2">
             {quickActions.map((action) => (
               <button
@@ -629,19 +720,13 @@ function MessagesWorkspace() {
               e.preventDefault();
               handleSendMessage();
             }}
-            className="flex items-end gap-2"
+            className="flex items-center gap-2"
           >
-            <div className="flex-1 rounded-xl border border-white/[0.07] bg-dark-3/70 px-3.5 py-2.5 focus-within:border-blue-1">
-              <textarea
-                rows={2}
+            <div className="flex-1 flex items-center rounded-full border border-white/[0.08] bg-dark-2 px-4 py-2.5 focus-within:border-blue-1 transition">
+              <input
+                type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
                 placeholder={
                   activeThread?.role === 'bot'
                     ? isAdmin
@@ -649,13 +734,13 @@ function MessagesWorkspace() {
                       : "Reply to Veridian Bot with your progress or completion evidence..."
                     : `Message ${activeThread?.title} directly (synced to Slack)...`
                 }
-                className="w-full resize-none bg-transparent text-xs text-white placeholder-white/35 focus:outline-none"
+                className="w-full bg-transparent text-sm text-white placeholder-white/35 focus:outline-none"
               />
             </div>
             <button
               type="submit"
               disabled={sending || !inputText.trim()}
-              className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-1 text-white shadow-lg transition hover:bg-blue-1/90 disabled:opacity-40"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-blue-1 text-white shadow-lg transition hover:bg-blue-1/90 disabled:opacity-40"
             >
               {sending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
             </button>
@@ -664,173 +749,238 @@ function MessagesWorkspace() {
       </main>
 
       {/* ======================================================== */}
-      {/* COLUMN 3: RIGHT CONTEXT DRAWER (280px)                   */}
+      {/* COLUMN 3: RIGHT PROFILE & LIVE SPRINT DRAWER (310px)     */}
       {/* ======================================================== */}
-      <aside className="hidden w-[280px] flex-col border-l border-white/[0.07] bg-dark-1 xl:flex">
-        {isAdmin ? (
-          // Manager Right Panel: Live Team Sprint Status
-          <div className="flex h-full flex-col">
-            <div className="border-b border-white/[0.07] p-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-white/50">
-                  Team Sprint Status
-                </h3>
-                <p className="mt-0.5 text-[11px] text-white/40">
-                  Live capacity, leave checks & Jira progress
-                </p>
-              </div>
+      {showRightDrawer && (
+        <aside className="w-[310px] shrink-0 border-l border-white/[0.08] bg-dark-1 flex flex-col h-full overflow-y-auto">
+          {/* Centered Profile Header */}
+          <div className="px-5 pt-6 pb-5 border-b border-white/[0.08] text-center">
+            <div className="relative mx-auto flex size-16 items-center justify-center rounded-full bg-dark-3 border border-white/[0.1] shadow-md">
+              {activeThread?.role === 'bot' ? (
+                <Bot className="size-8 text-purple-300" />
+              ) : (
+                <span className="text-xl font-bold text-white">
+                  {(activeThread?.title || 'U')[0].toUpperCase()}
+                </span>
+              )}
+              <span
+                className={cn(
+                  'absolute bottom-0 right-0 size-3.5 rounded-full ring-2 ring-dark-1',
+                  activeIsOnLeave ? 'bg-amber-400' : 'bg-emerald-400'
+                )}
+              />
+            </div>
+
+            <h3 className="text-base font-bold text-white mt-3">{activeThread?.title}</h3>
+            <p className="text-xs text-white/50 mt-0.5">
+              {activeThread?.role === 'bot'
+                ? 'Governance & Sprint Assistant'
+                : `${activeThread?.subtitle || 'Backend Engineer'} • ${activeIsOnLeave ? 'On Paternity Leave' : 'Active'}`}
+            </p>
+
+            {/* 3 Circular Quick-Action Icon Buttons */}
+            <div className="mt-4 flex items-center justify-center gap-3">
+              {/* 1. Open Slack */}
+              <a
+                href={activeThread?.slack_deep_link || 'https://app.slack.com/client'}
+                target="_blank"
+                rel="noreferrer"
+                title="Open in Slack"
+                className="flex size-9 items-center justify-center rounded-full bg-dark-3/80 border border-white/[0.08] text-white/70 hover:text-white hover:border-white/[0.2] transition"
+              >
+                <ExternalLink className="size-4" />
+              </a>
+
+              {/* 2. Ping Check-In */}
               <button
                 type="button"
-                disabled={pingingUser !== null}
-                onClick={handleCheckInAll}
-                className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-1/15 px-2.5 py-1 text-[11px] font-semibold text-blue-200 transition hover:bg-blue-1 hover:text-white disabled:opacity-40"
-                title="Dispatch 1-on-1 sprint check-in DMs to all active team members"
+                disabled={activeIsOnLeave || pingingUser !== null}
+                onClick={() => {
+                  if (activeThread?.role === 'bot') {
+                    handleCheckInAll();
+                  } else if (activeThread?.title) {
+                    handlePingEmployee(activeThread.title);
+                  }
+                }}
+                title={activeIsOnLeave ? 'Member on leave' : 'Ping Check-In DM'}
+                className="flex size-9 items-center justify-center rounded-full bg-dark-3/80 border border-white/[0.08] text-white/70 hover:text-amber-400 hover:border-white/[0.2] transition disabled:opacity-30"
               >
-                {pingingUser === 'all' ? (
-                  <RefreshCw className="size-3 animate-spin" />
+                {pingingUser ? (
+                  <RefreshCw className="size-4 animate-spin text-blue-400" />
                 ) : (
-                  <Zap className="size-3 text-blue-400" />
+                  <Zap className="size-4" />
                 )}
-                <span>Check-In All</span>
               </button>
-            </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
-              {threads
-                .filter((t) => t.role !== 'bot')
-                .map((t) => {
-                  const isOnLeave = (t.hr_status || '').toLowerCase().includes('leave');
-                  const ticket = t.active_ticket;
-
-                  return (
-                    <div
-                      key={t.channel_key}
-                      className="group rounded-xl border border-white/[0.07] bg-dark-3/50 p-3 text-xs transition hover:border-white/[0.12]"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-white">{t.title}</span>
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={cn(
-                              'rounded px-1.5 py-0.2 text-[9px] font-bold uppercase',
-                              isOnLeave
-                                ? 'bg-amber-500/15 border border-amber-500/20 text-amber-300/90'
-                                : 'bg-emerald-500/20 text-emerald-300'
-                            )}
-                          >
-                            {isOnLeave ? 'On Leave' : 'Active'}
-                          </span>
-                          {!isOnLeave && (
-                            <button
-                              type="button"
-                              disabled={pingingUser === t.title}
-                              onClick={() => handlePingEmployee(t.title)}
-                              title={`Send check-in ping to ${t.title}`}
-                              className="rounded p-1 text-white/40 opacity-60 transition hover:bg-white/[0.08] hover:text-blue-300 hover:opacity-100 disabled:opacity-40"
-                            >
-                              {pingingUser === t.title ? (
-                                <RefreshCw className="size-3 animate-spin text-blue-400" />
-                              ) : (
-                                <Zap className="size-3" />
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <p className="mt-0.5 text-[10px] text-white/45">{t.subtitle}</p>
-
-                      {ticket ? (
-                        <div className="mt-2.5 rounded-lg border border-white/[0.07] bg-dark-2 p-2">
-                          <div className="flex items-center justify-between text-[10px]">
-                            <span className="font-mono font-bold text-sky-300">{ticket.key}</span>
-                            <span className="text-white/60">{ticket.status}</span>
-                          </div>
-                          <p className="mt-1 truncate text-[11px] text-white/80">{ticket.title}</p>
-                          <div className="mt-2 flex items-center gap-2">
-                            <div className="h-1.5 flex-1 rounded-full bg-white/10 overflow-hidden">
-                              <div
-                                className="h-full bg-blue-1 transition-all duration-300"
-                                style={{ width: `${ticket.progress_pct}%` }}
-                              />
-                            </div>
-                            <span className="font-mono text-[9px] text-white/60">
-                              {ticket.progress_pct}%
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-2 text-[11px] text-white/30 italic">
-                          No Jira ticket active
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+              {/* 3. Open Jira */}
+              <Link
+                href={activeThread?.active_ticket?.jira_url || '/workos'}
+                title="View in Jira"
+                className="flex size-9 items-center justify-center rounded-full bg-dark-3/80 border border-white/[0.08] text-white/70 hover:text-sky-400 hover:border-white/[0.2] transition"
+              >
+                <Ticket className="size-4" />
+              </Link>
             </div>
           </div>
-        ) : (
-          // Employee Right Panel: My Assigned Tickets
-          <div className="flex h-full flex-col">
-            <div className="border-b border-white/[0.07] p-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-white/50">
-                My Assigned Tickets
-              </h3>
-              <p className="mt-0.5 text-[11px] text-white/40">
-                Jira tasks assigned to you this sprint
-              </p>
-            </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
-              {activeThread?.active_ticket ? (
-                <div className="rounded-xl border border-sky-400/30 bg-dark-3/50 p-3 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-sky-300">
-                      {activeThread.active_ticket.key}
+          {/* Structured Info Sections */}
+          <div className="px-4 py-4 space-y-4">
+            {/* Section 1: Live Jira & Sprint Progress */}
+            <div>
+              {activeThread?.role === 'bot' ? (
+                // Manager/Bot Overview: Team sprint progress rows
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold uppercase tracking-wider text-white/50">
+                      Team Sprint Progress
                     </span>
-                    <span className="rounded bg-sky-500/20 px-1.5 py-0.2 text-[9px] font-bold text-sky-200">
-                      {activeThread.active_ticket.status}
-                    </span>
-                  </div>
-                  <h4 className="mt-1.5 text-xs font-semibold text-white">
-                    {activeThread.active_ticket.title}
-                  </h4>
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between text-[10px] text-white/50 mb-1">
-                      <span>Progress</span>
-                      <span className="font-mono">{activeThread.active_ticket.progress_pct}%</span>
-                    </div>
-                    <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 transition-all duration-300"
-                        style={{ width: `${activeThread.active_ticket.progress_pct}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {activeThread.active_ticket.jira_url && (
-                    <a
-                      href={activeThread.active_ticket.jira_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-3 flex items-center justify-center gap-1.5 rounded-lg bg-blue-1 py-1.5 text-[11px] font-semibold text-white shadow transition hover:bg-blue-1/90"
+                    <button
+                      type="button"
+                      disabled={pingingUser !== null}
+                      onClick={handleCheckInAll}
+                      className="flex items-center gap-1 rounded-md border border-blue-500/30 bg-blue-1/15 px-2 py-0.5 text-[10px] font-semibold text-blue-200 transition hover:bg-blue-1 hover:text-white disabled:opacity-40"
                     >
-                      <span>View in Jira</span>
-                      <ExternalLink className="size-3" />
-                    </a>
-                  )}
+                      {pingingUser === 'all' ? (
+                        <RefreshCw className="size-2.5 animate-spin" />
+                      ) : (
+                        <Zap className="size-2.5 text-blue-400" />
+                      )}
+                      <span>Check-In All</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {dmThreads.map((t) => {
+                      const isOnLeave = (t.hr_status || '').toLowerCase().includes('leave');
+                      const ticket = t.active_ticket;
+
+                      return (
+                        <div
+                          key={t.channel_key}
+                          className="rounded-xl border border-white/[0.07] bg-dark-3/50 p-3 text-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-white">{t.title}</span>
+                            <span
+                              className={cn(
+                                'rounded px-1.5 py-0.2 text-[9px] font-bold uppercase',
+                                isOnLeave
+                                  ? 'bg-amber-500/15 border border-amber-500/20 text-amber-300'
+                                  : 'bg-emerald-500/20 text-emerald-300'
+                              )}
+                            >
+                              {isOnLeave ? 'ON LEAVE' : ticket?.status || 'ACTIVE'}
+                            </span>
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between text-[11px]">
+                            <span className="font-mono text-sky-300 font-bold">
+                              {ticket?.key || (isOnLeave ? 'SCRUM-01' : 'SCRUM-02')}
+                            </span>
+                            <span className="text-white/50">{ticket?.progress_pct ?? (isOnLeave ? 0 : 60)}%</span>
+                          </div>
+
+                          <div className="mt-1 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                            <div
+                              className={cn(
+                                'h-full transition-all duration-300',
+                                isOnLeave ? 'bg-amber-400' : 'bg-blue-1'
+                              )}
+                              style={{ width: `${ticket?.progress_pct ?? (isOnLeave ? 0 : 60)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ) : (
-                <div className="rounded-xl border border-white/[0.07] bg-dark-3/50 p-4 text-center">
-                  <p className="text-xs text-white/50">No tickets assigned to you currently.</p>
-                  <p className="mt-1 text-[10px] text-white/30">
-                    Once the Manager approves the sprint review gate, assigned tickets will appear here.
-                  </p>
+                // Individual Employee Selection: Their specific ticket details
+                <div>
+                  <div className="mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-white/50">
+                      Assigned Sprint Ticket
+                    </span>
+                  </div>
+
+                  {activeThread?.active_ticket ? (
+                    <div className="rounded-xl border border-sky-400/30 bg-dark-3/50 p-3.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-bold text-sky-300">
+                          {activeThread.active_ticket.key}
+                        </span>
+                        <span className="rounded bg-sky-500/20 px-1.5 py-0.2 text-[9px] font-bold text-sky-200 uppercase">
+                          {activeThread.active_ticket.status}
+                        </span>
+                      </div>
+                      <h4 className="mt-2 text-xs font-semibold text-white">
+                        {activeThread.active_ticket.title}
+                      </h4>
+
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between text-[10px] text-white/50 mb-1">
+                          <span>Progress</span>
+                          <span className="font-mono">{activeThread.active_ticket.progress_pct}%</span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className="h-full bg-blue-1 transition-all duration-300"
+                            style={{ width: `${activeThread.active_ticket.progress_pct}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {activeThread.active_ticket.jira_url && (
+                        <a
+                          href={activeThread.active_ticket.jira_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3.5 flex items-center justify-center gap-1.5 rounded-lg bg-blue-1 py-1.5 text-xs font-semibold text-white shadow transition hover:bg-blue-1/90"
+                        >
+                          <span>View in Jira</span>
+                          <ExternalLink className="size-3" />
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-white/[0.07] bg-dark-3/50 p-4 text-center">
+                      <p className="text-xs text-white/60">
+                        {activeIsOnLeave
+                          ? 'Employee currently on approved leave.'
+                          : 'No active Jira ticket assigned.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
+
+            {/* Section 2: Workspace & Slack Sync Info */}
+            <div className="rounded-xl border border-white/[0.07] bg-dark-3/40 p-3 text-xs space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+                Workspace Status
+              </span>
+              <div className="flex items-center justify-between text-[11px] text-white/70">
+                <span>Slack Sync</span>
+                <span className="font-mono text-emerald-400 font-medium">Synced every 2.5s</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-white/70">
+                <span>Governance Engine</span>
+                <span className="font-mono text-blue-300 font-medium">Active</span>
+              </div>
+              <div className="pt-1 border-t border-white/[0.06]">
+                <Link
+                  href="/workos"
+                  className="flex items-center justify-between text-[11px] text-blue-300 hover:text-blue-200 transition"
+                >
+                  <span>Open WorkOS Hub</span>
+                  <ChevronRight className="size-3" />
+                </Link>
+              </div>
+            </div>
           </div>
-        )}
-      </aside>
+        </aside>
+      )}
     </div>
   );
 }
