@@ -35,7 +35,8 @@ def merge_node(state: AgentState) -> dict:
         if flags:
             flagged_lines.append(f"{task_id}:{','.join(flags)}")
 
-    upsert_tasks(org_id=org_id, meeting_id=meeting_id, thread_id=thread_id, tasks=tasks)
+    tasks_dict = {k: dict(v) for k, v in tasks.items()}
+    upsert_tasks(org_id=org_id, meeting_id=meeting_id, thread_id=thread_id, tasks=tasks_dict)
     alerts = send_immediate_compliance_alert(
         org_id=org_id,
         thread_id=thread_id,

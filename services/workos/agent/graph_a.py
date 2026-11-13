@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from langgraph.graph import END, START, StateGraph
 
@@ -56,7 +56,7 @@ def route_resolution(state: AgentState) -> str:
 
 def build_graph_a(checkpointer: Optional[Any] = None, db_path: Optional[str] = None):
     """Compile Graph A with persistent checkpointer and HITL interrupt_before."""
-    builder = StateGraph(AgentState)
+    builder = StateGraph(cast(Any, AgentState))
 
     builder.add_node("ingest_node", ingest_node)
     builder.add_node("extractor_node", extractor_node)

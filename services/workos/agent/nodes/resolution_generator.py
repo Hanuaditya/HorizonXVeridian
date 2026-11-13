@@ -33,7 +33,7 @@ Evaluate the task and its verified compliance firewall flags, then decide the sa
 Never invent policy IDs or choose external Jira projects or Slack channels."""
 
 
-def _has_flags(task: dict) -> bool:
+def _has_flags(task: Any) -> bool:
     return bool(
         task.get("assignee_resolution_flag")
         or task.get("finance_flag")
@@ -46,7 +46,7 @@ def _has_flags(task: dict) -> bool:
     )
 
 
-def _deterministic_resolution(task: dict) -> ResolutionOutput:
+def _deterministic_resolution(task: Any) -> ResolutionOutput:
     """Apply deterministic policy priority when running offline/DEMO_MODE."""
     if task.get("finance_flag"):
         return ResolutionOutput(
@@ -93,7 +93,7 @@ def _deterministic_resolution(task: dict) -> ResolutionOutput:
     return ResolutionOutput(suggested_action="PROCEED")
 
 
-def _conflict_type_and_provenance(task: dict) -> tuple[str, str]:
+def _conflict_type_and_provenance(task: Any) -> tuple[str, str]:
     if task.get("finance_flag"):
         return "BUDGET", str(task.get("finance_provenance") or "Finance CSV")
     if task.get("security_flag"):
@@ -170,7 +170,7 @@ def resolution_generator_node(state: AgentState) -> dict:
             )
         )
 
-    save_resolutions(org_id=org_id, meeting_id=meeting_id, thread_id=thread_id, resolutions=resolutions)
+    save_resolutions(org_id=org_id, meeting_id=meeting_id, thread_id=thread_id, resolutions=[dict(r) for r in resolutions])
     upsert_tasks(org_id=org_id, meeting_id=meeting_id, thread_id=thread_id, tasks={
         k: {**tasks.get(k, {}), **v} for k, v in task_updates.items()
     })

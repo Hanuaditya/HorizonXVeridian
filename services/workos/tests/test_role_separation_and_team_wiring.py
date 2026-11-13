@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -95,7 +96,7 @@ def test_jira_email_to_account_id_lookup(monkeypatch):
 
     monkeypatch.setattr(jops, "has_real_jira_creds", lambda: True)
 
-    captured_requests = []
+    captured_requests: list[Any] = []
 
     def mock_jira_get(url, **kwargs):
         captured_requests.append(("GET", url, kwargs))

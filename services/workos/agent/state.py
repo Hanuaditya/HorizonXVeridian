@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Dict, List, Literal, Optional
-from typing_extensions import TypedDict
+from typing import Annotated, Any, Dict, List, Literal, Optional, TypedDict
 
 
 class DecisionItem(TypedDict):
@@ -27,7 +26,7 @@ class Task(TypedDict, total=False):
     assignee_resolution_flag: Optional[str]
     resource_type: str
     transcript_quote: str
-    status: Literal["PENDING", "DEFERRED", "CANCELLED", "READY", "DISPATCHED", "DONE", "BLOCKED"]
+    status: Literal["PENDING", "DEFERRED", "CANCELLED", "READY", "DISPATCHED", "DONE", "BLOCKED", "UNRESOLVED_ASSIGNEE"]
 
     hr_status: Optional[str]
     hr_provenance: Optional[str]

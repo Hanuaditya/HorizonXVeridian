@@ -6,12 +6,13 @@ import asyncio
 import logging
 import re
 import time
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, cast
 
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
 from agent.graph_a import get_graph_a
+from agent.nodes.dispatcher import dispatcher_node
 from api.sse import sse_manager
 from connectors.jira_ops import add_jira_comment, transition_jira_issue_done
 from connectors.slack_ops import (
@@ -163,15 +164,62 @@ async def resume_graph_a_and_sync(
     config = {"configurable": {"thread_id": thread_id}}
     settings = get_settings()
     try:
-        graph = get_graph_a()
-        result = await asyncio.to_thread(
-            graph.invoke,
-            Command(resume={"decisions": hitl_decisions, "approver_user_id": approver_user_id}),
-            config,
-        )
-        dispatched = (result or {}).get("dispatched_tickets", [])
-        tasks_out = (result or {}).get("tasks", {})
-        meeting_id = (result or {}).get("meeting_id", thread_id)
+        result: Any = None
+        try:
+            graph = get_graph_a()
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    graph.invoke,
+                    Command(resume={"decisions": hitl_decisions, "approver_user_id": approver_user_id}),
+                    config,
+                ),
+                timeout=6.0,
+            )
+        except Exception as graph_err:
+            logger.warning(
+                "Graph A resume failed or no paused checkpoint found (%s). Running direct dispatcher fallback...",
+                graph_err,
+            )
+            # Direct dispatcher fallback using current snapshot
+            existing_snap = get_thread_snapshot(thread_id) or {}
+            tasks_map = dict(existing_snap.get("tasks") or {})
+            for tid, dec in hitl_decisions.items():
+                if tid in tasks_map:
+                    t = dict(tasks_map[tid])
+                    if dec == "DEFER":
+                        t["status"] = "DEFERRED"
+                    elif dec in ("PROCEED", "REROUTE"):
+                        t["status"] = "READY"
+                        if dec == "REROUTE" and not t.get("rerouted_assignee") and t.get("proposed_assignee"):
+                            t["rerouted_assignee"] = t["proposed_assignee"]
+                    tasks_map[tid] = t
+
+            fallback_state: Dict[str, Any] = {
+                "org_id": org_id,
+                "meeting_id": existing_snap.get("meeting_id") or thread_id,
+                "thread_id": thread_id,
+                "tasks": tasks_map,
+                "dispatched_tickets": existing_snap.get("dispatched_tickets", []),
+                "approver_user_id": approver_user_id,
+            }
+            dispatch_out = await asyncio.to_thread(dispatcher_node, cast(Any, fallback_state))
+            for tid, upd in (dispatch_out.get("tasks") or {}).items():
+                if tid in tasks_map:
+                    tasks_map[tid] = {**tasks_map[tid], **dict(upd)}
+                else:
+                    tasks_map[tid] = dict(upd)
+
+            result = {
+                **existing_snap,
+                "tasks": tasks_map,
+                "dispatched_tickets": dispatch_out.get("dispatched_tickets", []),
+                "meeting_id": existing_snap.get("meeting_id") or thread_id,
+            }
+
+        res_dict: Dict[str, Any] = result if isinstance(result, dict) else {}
+        dispatched = res_dict.get("dispatched_tickets", [])
+        tasks_out = res_dict.get("tasks", {})
+        meeting_id = res_dict.get("meeting_id", thread_id)
         existing_snap = get_thread_snapshot(thread_id) or {}
         next_checkin = time.time() + max(10, settings.checkin_interval_seconds)
 
@@ -180,13 +228,13 @@ async def resume_graph_a_and_sync(
             org_id=org_id,
             snapshot={
                 "meeting_id": meeting_id,
-                "title": (result or {}).get("title") or existing_snap.get("title"),
+                "title": res_dict.get("title") or existing_snap.get("title"),
                 "phase": "COMPLETE",
                 "tasks": tasks_out,
-                "resolutions": (result or {}).get("resolutions", []) or existing_snap.get("resolutions", []),
-                "key_decisions": (result or {}).get("key_decisions", []) or existing_snap.get("key_decisions", []),
-                "meeting_context": (result or {}).get("meeting_context", {}) or existing_snap.get("meeting_context", {}),
-                "immediate_alerts": (result or {}).get("immediate_alerts", []) or existing_snap.get("immediate_alerts", []),
+                "resolutions": res_dict.get("resolutions", []) or existing_snap.get("resolutions", []),
+                "key_decisions": res_dict.get("key_decisions", []) or existing_snap.get("key_decisions", []),
+                "meeting_context": res_dict.get("meeting_context", {}) or existing_snap.get("meeting_context", {}),
+                "immediate_alerts": res_dict.get("immediate_alerts", []) or existing_snap.get("immediate_alerts", []),
                 "dispatched_tickets": dispatched,
                 "approver_user_id": approver_user_id,
                 "manager_approved": True,

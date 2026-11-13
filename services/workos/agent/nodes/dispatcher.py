@@ -62,7 +62,7 @@ def _send_slack_notification(
     )
 
 
-def dispatcher_node(state: AgentState) -> dict:
+def dispatcher_node(state: Any) -> dict:
     """Create Jira tickets and 1-on-1 Slack assignment DMs idempotently after Manager approval."""
     org_id = state.get("org_id") or "org_demo_horizon"
     meeting_id = state.get("meeting_id", "unknown")

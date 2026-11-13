@@ -27,7 +27,12 @@ def sync_security_data(org_id: str, policy_path: Optional[str] = None) -> List[D
     clean_records: List[Dict] = []
 
     if path.suffix.lower() == ".pdf":
-        from pypdf import PdfReader
+        try:
+            from pypdf import PdfReader  # type: ignore[import-not-found,import-untyped]
+        except ImportError:
+            import importlib
+            pypdf = importlib.import_module("pypdf")
+            PdfReader = pypdf.PdfReader
 
         reader = PdfReader(str(path))
         for idx, page in enumerate(reader.pages, start=1):

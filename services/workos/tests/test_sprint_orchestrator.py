@@ -7,6 +7,7 @@ import hmac
 import json
 import time
 from types import SimpleNamespace
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -48,7 +49,7 @@ def test_zero_tickets_before_manager_approval_and_slack_interactivity(monkeypatc
     monkeypatch.setenv("SLACK_SIGNING_SECRET", "slack_interactivity_test_secret_2026")
     get_local_store().reset(seed_default_org=True)
 
-    jira_calls = []
+    jira_calls: list[Any] = []
     monkeypatch.setattr(
         "agent.nodes.dispatcher._create_jira_issue",
         lambda **kw: jira_calls.append(kw) or {
@@ -222,7 +223,7 @@ def test_interval_checkins_partial_digest_and_natural_language_auto_close_jira(m
 
     # Seed an active completed dispatch snapshot ready for check-ins
     import connectors.jira_ops as jira_ops
-    jira_calls = []
+    jira_calls: list[Any] = []
 
     def fake_jira_get(url, **kwargs):
         jira_calls.append(("GET", url))
@@ -410,6 +411,7 @@ def test_non_evidence_completion_requires_manager_confirm_done_or_reject(monkeyp
     assert ok_conf.json()["status"] == "confirmed_done"
 
     final_snap = get_thread_snapshot(tid)
+    assert final_snap is not None
     assert final_snap["tasks"]["t1"]["status"] == "DONE"
     assert final_snap["tasks"]["t1"]["jira_status"] == "Done"
     assert final_snap["tasks"]["t1"]["progress_pct"] == 100

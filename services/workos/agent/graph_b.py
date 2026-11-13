@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from langgraph.graph import END, START, StateGraph
 
 from agent.nodes.intent_parser import intent_parser_node
@@ -19,7 +21,7 @@ def _route_after_slack_intent(state: AgentState) -> str:
 
 
 def build_graph_b_slack():
-    builder = StateGraph(AgentState)
+    builder = StateGraph(cast(Any, AgentState))
     builder.add_node("intent_parser_node", intent_parser_node)
     builder.add_node("ticket_resolver_node", ticket_resolver_node)
     builder.add_node("escalation_node", escalation_node)
@@ -36,7 +38,7 @@ def build_graph_b_slack():
 
 
 def build_graph_b_github():
-    builder = StateGraph(AgentState)
+    builder = StateGraph(cast(Any, AgentState))
     builder.add_node("semantic_matcher_node", semantic_matcher_node)
     builder.add_node("ticket_resolver_node", ticket_resolver_node)
 
