@@ -212,7 +212,7 @@ class _PostgrestQuery:
         self._url = f"{rest_url}/{table}"
         self._headers = dict(headers)
         self._method = "GET"
-        self._params: List[tuple[str, str]] = []
+        self._params: Any = []
         self._json: Any = None
         self._want_count = False
 
@@ -271,7 +271,7 @@ class _PostgrestQuery:
             self._method,
             self._url,
             headers=self._headers,
-            params=self._params,
+            params=httpx.QueryParams(self._params) if self._params else None,
             json=self._json,
             timeout=20.0,
         )
