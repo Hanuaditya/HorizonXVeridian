@@ -61,6 +61,8 @@ console.log('===============================================================\n')
 
 const isWin = process.platform === 'win32';
 const npmCmd = isWin ? 'npm.cmd' : 'npm';
+const isDev = process.argv.includes('--dev');
+const webArgs = isLive && !isDev ? ['run', 'start'] : ['run', 'dev'];
 
 const processes = [
   {
@@ -78,7 +80,7 @@ const processes = [
   {
     name: 'web',
     cmd: npmCmd,
-    args: ['run', 'dev'],
+    args: webArgs,
     cwd: path.join(rootDir, 'apps', 'web'),
   },
 ];

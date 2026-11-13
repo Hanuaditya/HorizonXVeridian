@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "npm --prefix apps/web run dev",
     "demo": "node scripts/run_demo.mjs",
-    "live": "node scripts/run_demo.mjs --live",
+    "live": "npm run build && node scripts/run_demo.mjs --live",
+    "live:dev": "node scripts/run_demo.mjs --live --dev",
     "verify-keys": "python scripts/verify_keys.py",
     "build": "npm --prefix apps/web run build",
     "lint": "npm --prefix apps/web run lint",

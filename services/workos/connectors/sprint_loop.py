@@ -224,11 +224,35 @@ async def resume_graph_a_and_sync(
             org_id=org_id,
         )
         await sse_manager.push_complete(thread_id, org_id=org_id)
+
+        try:
+            asyncio.create_task(_auto_checkin_scheduler(org_id, thread_id))
+        except Exception as sched_exc:
+            logger.warning("Failed to spawn _auto_checkin_scheduler: %s", sched_exc)
+
         return {"status": "dispatched", "dispatched_tickets": dispatched}
     except Exception as exc:
         logger.error("resume_graph_a_and_sync failed: %s", exc, exc_info=True)
         await sse_manager.push_error(thread_id, str(exc), org_id=org_id)
         raise
+
+
+async def _auto_checkin_scheduler(org_id: str, thread_id: str) -> None:
+    """Schedule automatic demo cadence check-ins: #1 after 20s, #2 after 30s more."""
+    try:
+        await asyncio.sleep(20)
+        logger.info("Auto-checkin scheduler: triggering Check-In #1 for %s in org %s", thread_id, org_id)
+        await trigger_checkin_for_thread(org_id=org_id, thread_id=thread_id)
+
+        await asyncio.sleep(30)
+        snap = get_thread_snapshot(thread_id) or {}
+        tasks = snap.get("tasks") or {}
+        has_open = any(t.get("status") != "DONE" for t in tasks.values())
+        if has_open:
+            logger.info("Auto-checkin scheduler: triggering Check-In #2 for %s in org %s", thread_id, org_id)
+            await trigger_checkin_for_thread(org_id=org_id, thread_id=thread_id)
+    except Exception as exc:
+        logger.warning("Auto-checkin scheduler task failed for %s: %s", thread_id, exc)
 
 
 async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, Any]:
@@ -528,6 +552,17 @@ async def process_employee_reply(
             completed_milestones=analysis.completed_milestones,
             blockers=analysis.blockers,
             task_title=task_title,
+        )
+        record_slack_feed_message(
+            org_id=org_id,
+            thread_id=thread_id,
+            role="bot",
+            sender="Veridian Bot",
+            recipient=assignee,
+            text=f"Got it! Logged {analysis.progress_pct}% progress on {jira_key or task_id} and notified your manager.",
+            kind="bot_reply",
+            task_id=task_id,
+            jira_key=jira_key or None,
         )
         write_audit_trail(
             org_id=org_id,

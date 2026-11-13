@@ -185,6 +185,19 @@ async def admin_trigger_connector_sync(
     }
 
 
+@router.post("/checkin/trigger")
+async def trigger_checkin_global(
+    body: Optional[Dict[str, Any]] = None,
+    auth: AuthContext = Depends(require_manager),
+) -> Dict[str, Any]:
+    """Manager-only trigger to send 1-on-1 status check-ins to all assigned employees."""
+    thread_id = (body or {}).get("thread_id")
+    if not thread_id:
+        recent = list_thread_snapshots(auth.org_id, limit=5)
+        thread_id = recent[0]["thread_id"] if recent else "live-sprint-sync"
+    return await trigger_checkin_for_thread(org_id=auth.org_id, thread_id=thread_id)
+
+
 @router.post("/threads/{thread_id}/checkin")
 async def manual_trigger_checkin(
     thread_id: str,

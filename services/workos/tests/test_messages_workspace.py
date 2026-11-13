@@ -318,3 +318,91 @@ def test_sprint_reset_cleans_slate_and_sets_zero_percent():
             assert t["status"] == "ON_LEAVE"
         else:
             assert t["status"] == "IDLE"
+
+
+def test_checkin_trigger_endpoint_manager_only():
+    client = TestClient(app)
+    mgr_token = mint_demo_jwt(user_id="user_mgr_chk", org_id="org_demo_horizon", role="org:admin")
+    emp_token = mint_demo_jwt(user_id="user_emp_chk", org_id="org_demo_horizon", role="org:member")
+
+    save_thread_snapshot(
+        thread_id="thr-chk-test",
+        org_id="org_demo_horizon",
+        snapshot={
+            "meeting_id": "mtg-chk",
+            "phase": "COMPLETE",
+            "manager_approved": True,
+            "tasks": {
+                "t1": {"task_id": "t1", "assignee": "catchme if", "status": "DISPATCHED", "jira_ticket_id": "SCRUM-50", "title": "Setup VPC"}
+            },
+            "dispatched_tickets": [
+                {"task_id": "t1", "assignee": "catchme if", "jira_key": "SCRUM-50", "progress_pct": 0}
+            ],
+        },
+    )
+
+    # 1. Non-manager receives 403 Forbidden
+    res_emp = client.post("/api/checkin/trigger", headers={"Authorization": f"Bearer {emp_token}"}, json={"thread_id": "thr-chk-test"})
+    assert res_emp.status_code == 403
+
+    # 2. Manager triggers successfully
+    res_mgr = client.post("/api/checkin/trigger", headers={"Authorization": f"Bearer {mgr_token}"}, json={"thread_id": "thr-chk-test"})
+    assert res_mgr.status_code == 200
+    sent = res_mgr.json().get("checkins_sent", [])
+    assert len(sent) >= 1
+    assert sent[0]["jira_key"] == "SCRUM-50"
+
+
+def test_employee_reply_instant_dual_notifications():
+    client = TestClient(app)
+    mgr_token = mint_demo_jwt(user_id="user_mgr_dual", org_id="org_demo_horizon", role="org:admin")
+    emp_token = mint_demo_jwt(user_id="user_emp_dual", org_id="org_demo_horizon", role="org:member")
+
+    save_thread_snapshot(
+        thread_id="thr-dual-test",
+        org_id="org_demo_horizon",
+        snapshot={
+            "meeting_id": "mtg-dual",
+            "phase": "COMPLETE",
+            "manager_approved": True,
+            "tasks": {
+                "t1": {"task_id": "t1", "assignee": "catchme if", "status": "DISPATCHED", "jira_ticket_id": "SCRUM-60", "title": "Deploy Cluster"}
+            },
+            "dispatched_tickets": [
+                {"task_id": "t1", "assignee": "catchme if", "jira_key": "SCRUM-60", "progress_pct": 20}
+            ],
+        },
+    )
+
+    # Employee sends progress update
+    reply_res = client.post(
+        "/api/messages/veridian-bot",
+        headers={"Authorization": f"Bearer {emp_token}"},
+        json={
+            "text": "60% done: staging environment provisioned and API integration tests running.",
+            "thread_id": "thr-dual-test",
+            "task_id": "t1",
+        },
+    )
+    assert reply_res.status_code == 200
+    reply_data = reply_res.json()
+    assert reply_data["status"] == "processed"
+    assert reply_data["progress_pct"] == 60
+    assert "Logged 60% progress" in reply_data["bot_reply"]
+
+    # Verify Employee feed receives their message AND the bot confirmation
+    emp_feed_res = client.get("/api/messages/veridian-bot?thread_id=thr-dual-test", headers={"Authorization": f"Bearer {emp_token}"})
+    assert emp_feed_res.status_code == 200
+    emp_texts = [m["text"] for m in emp_feed_res.json()["messages"]]
+    assert any("60% done: staging environment provisioned" in t for t in emp_texts)
+    assert any("Logged 60% progress" in t for t in emp_texts)
+    # Employee must NOT see the executive summary card
+    assert not any("[Progress Digest]" in t for t in emp_texts)
+
+    # Verify Manager feed receives the Executive Summary Card
+    mgr_feed_res = client.get("/api/messages/veridian-bot?thread_id=thr-dual-test", headers={"Authorization": f"Bearer {mgr_token}"})
+    assert mgr_feed_res.status_code == 200
+    mgr_texts = [m["text"] for m in mgr_feed_res.json()["messages"]]
+    assert any("[Progress Digest]" in t for t in mgr_texts)
+    assert any("60% complete" in t for t in mgr_texts)
+

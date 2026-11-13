@@ -7,14 +7,17 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from api.auth import AuthContext, require_auth
 from api.sse import sse_manager
-from connectors.slack_ops import get_slack_dm_link, has_real_slack_creds, send_direct_slack_dm
+from connectors.jira_ops import add_jira_comment, transition_jira_issue_done
+from connectors.slack_ops import get_slack_dm_link, has_real_slack_creds, post_slack_message, send_direct_slack_dm
 from connectors.sprint_loop import (
+    _deterministic_analyze_reply,
     build_default_hitl_decisions,
+    extract_completion_evidence,
     process_employee_reply,
     record_slack_feed_message,
     resume_graph_a_and_sync,
@@ -25,11 +28,14 @@ from core.store import (
     get_unread_message_counts,
     list_direct_messages,
     list_employees,
+    list_slack_feed,
     list_slack_feed_for_org,
     list_thread_snapshots,
     mark_channel_read,
     record_approval,
     record_direct_message,
+    save_thread_snapshot,
+    update_task_status_by_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -377,11 +383,12 @@ async def get_channel_messages(
                     }
                     or (role == "bot" and rcp in {"Manager", "All", current_name})
                     or rcp in {"Manager", "All"}
+                    or (m.get("metadata") or {}).get("recipient_id") in {"manager:veridian-bot", auth.user_id}
                 ):
                     messages.append(m)
             else:
                 # Employee sees ONLY their 1-on-1 check-ins, assignments, and replies
-                if kind in {"review_menu", "compliance_alert", "blocker_escalation"}:
+                if kind in {"review_menu", "compliance_alert", "blocker_escalation", "progress_digest"}:
                     continue
                 rcp_low = rcp.lower()
                 snd_low = snd.lower()
@@ -420,6 +427,7 @@ async def get_channel_messages(
 async def send_channel_message(
     channel_key: str,
     body: MessageSendRequest,
+    background_tasks: BackgroundTasks,
     auth: AuthContext = Depends(require_auth),
 ) -> Dict[str, Any]:
     """Send a message to Veridian Bot or a teammate, syncing with Slack and Jira execution."""
@@ -437,35 +445,192 @@ async def send_channel_message(
 
     if channel_key == "veridian-bot":
         if not is_manager:
-            # Employee messaging Veridian Bot: Route through Sprint Loop Employee Reply Pipeline!
+            # Employee messaging Veridian Bot: Instant response pipeline (<300ms)
             target_task_id = body.task_id
+            tasks_map = dict((latest_snap or {}).get("tasks") or {})
             if not target_task_id and latest_snap:
-                # Find task assigned to this employee
                 name_low = current_name.lower()
-                for tid, t in (latest_snap.get("tasks") or {}).items():
+                for tid, t in tasks_map.items():
                     a = str(t.get("rerouted_assignee") or t.get("assignee") or "").lower()
                     if name_low in a or a in name_low:
                         target_task_id = tid
                         break
-                if not target_task_id and latest_snap.get("tasks"):
-                    target_task_id = next(iter(latest_snap["tasks"].keys()))
+                if not target_task_id and tasks_map:
+                    target_task_id = next(iter(tasks_map.keys()))
 
             if not target_task_id:
                 target_task_id = "t1"
 
-            result = await process_employee_reply(
+            task = dict(tasks_map.get(target_task_id) or {})
+            task_title = str(task.get("reframed_title") or task.get("title") or "Sprint Task")
+            jira_key = str(task.get("jira_ticket_id") or task.get("jira_key") or target_task_id)
+
+            # 1. Instant deterministic parsing (zero LLM wait)
+            analysis = _deterministic_analyze_reply(text_clean, task_title)
+            evidence = extract_completion_evidence(text_clean)
+
+            # 2. Formulate immediate messages
+            if analysis.intent == "COMPLETED":
+                bot_emp_reply = f"Completed! Your task '{task_title}' ({jira_key}) is marked complete in Jira and your manager has been notified."
+                mgr_summary_text = (
+                    f"*[Task Completed]* `{jira_key}` ({task_title}) for *{current_name}* has been marked 100% complete.\n"
+                    f"• *Update:* \"{text_clean}\"\n"
+                    f"• *Status:* Jira ticket closed automatically."
+                )
+                new_status = "DONE"
+                new_progress = 100
+                new_jira_status = "Done"
+            elif analysis.intent == "BLOCKED":
+                bot_emp_reply = f"Logged blocker on {jira_key} ({task_title}): '{analysis.blockers or text_clean}'. Your manager has been escalated."
+                mgr_summary_text = (
+                    f"*[URGENT BLOCKER ESCALATION]* `{jira_key}` (@{current_name}):\n"
+                    f"• *Task:* {task_title}\n"
+                    f"• *Blocker:* {analysis.blockers or text_clean}"
+                )
+                new_status = "BLOCKED"
+                new_progress = analysis.progress_pct
+                new_jira_status = "Blocked"
+            else:
+                bot_emp_reply = f"Got it! Logged {analysis.progress_pct}% progress on {jira_key} ({task_title}) and notified your manager."
+                mgr_summary_text = (
+                    f"*[Progress Digest]* `{jira_key}` (@{current_name}): *{analysis.progress_pct}% complete*\n"
+                    f"• *Completed:* {analysis.completed_milestones or text_clean}\n"
+                    f"• *Blockers:* {analysis.blockers or 'None'}"
+                )
+                new_status = "DISPATCHED"
+                new_progress = analysis.progress_pct
+                new_jira_status = task.get("jira_status") or "In Progress"
+
+            # 3. Persist ALL 3 records immediately
+            # Record 1: Outgoing employee message in Employee's veridian-bot thread
+            record_slack_feed_message(
                 org_id=auth.org_id,
                 thread_id=target_thread_id,
+                role="employee",
+                sender=current_name,
+                recipient="Veridian Bot",
+                text=text_clean,
+                kind="employee_reply",
                 task_id=target_task_id,
-                reply_text=text_clean,
-                source="web_messages",
-                post_to_slack=True,
+                jira_key=jira_key,
             )
+
+            # Record 2: Veridian Bot's immediate reply to Employee
+            record_slack_feed_message(
+                org_id=auth.org_id,
+                thread_id=target_thread_id,
+                role="bot",
+                sender="Veridian Bot",
+                recipient=current_name,
+                text=bot_emp_reply,
+                kind="bot_reply",
+                task_id=target_task_id,
+                jira_key=jira_key,
+            )
+
+            # Record 3: Executive Summary Card for Manager
+            summary_kind = "closure" if analysis.intent == "COMPLETED" else ("blocker_escalation" if analysis.intent == "BLOCKED" else "progress_digest")
+            record_slack_feed_message(
+                org_id=auth.org_id,
+                thread_id=target_thread_id,
+                role="manager",
+                sender="Veridian Bot",
+                recipient="Manager",
+                text=mgr_summary_text,
+                kind=summary_kind,
+                task_id=target_task_id,
+                jira_key=jira_key,
+                metadata={
+                    "progress_pct": new_progress,
+                    "assignee": current_name,
+                    "task_title": task_title,
+                    "blockers": analysis.blockers,
+                    "recipient_id": "manager:veridian-bot",
+                },
+            )
+
+            # 4. Update task state in memory & DB
+            task["status"] = new_status
+            task["progress_pct"] = new_progress
+            task["jira_status"] = new_jira_status
+            task["completed_milestones"] = analysis.completed_milestones
+            task["blockers"] = analysis.blockers
+            tasks_map[target_task_id] = task
+
+            dispatched_list = [dict(d) for d in ((latest_snap or {}).get("dispatched_tickets") or [])]
+            for dt in dispatched_list:
+                if dt.get("task_id") == target_task_id:
+                    dt["progress_pct"] = new_progress
+                    dt["jira_status"] = new_jira_status
+
+            update_task_status_by_id(
+                org_id=auth.org_id,
+                task_id=target_task_id,
+                status=new_status,
+                jira_key=jira_key,
+            )
+
+            save_thread_snapshot(
+                thread_id=target_thread_id,
+                org_id=auth.org_id,
+                snapshot={
+                    **(latest_snap or {}),
+                    "tasks": tasks_map,
+                    "dispatched_tickets": dispatched_list,
+                    "slack_feed": list_slack_feed(org_id=auth.org_id, thread_id=target_thread_id),
+                },
+            )
+
+            # 5. Push SSE update
+            await sse_manager.push_event(
+                target_thread_id,
+                "tracker_update",
+                {
+                    "source": "web_messages",
+                    "task_id": target_task_id,
+                    "jira_key": jira_key,
+                    "intent": analysis.intent,
+                    "progress_pct": new_progress,
+                    "tasks": tasks_map,
+                    "dispatched_tickets": dispatched_list,
+                    "slack_feed": list_slack_feed(org_id=auth.org_id, thread_id=target_thread_id),
+                },
+                org_id=auth.org_id,
+            )
+
+            # 6. Run background Jira & Slack async sync
+            def _bg_sync():
+                try:
+                    if analysis.intent == "COMPLETED":
+                        transition_jira_issue_done(jira_key, f"Completed by {current_name}: {text_clean}")
+                    else:
+                        add_jira_comment(jira_key, f"Progress update ({new_progress}%) from {current_name}: {text_clean}")
+                except Exception as sync_exc:
+                    logger.warning("Background Jira sync error: %s", sync_exc)
+
+                try:
+                    if has_real_slack_creds():
+                        post_slack_message(
+                            org_id=auth.org_id,
+                            thread_id=target_thread_id,
+                            role="employee",
+                            recipient="Veridian Bot",
+                            text=f"[{current_name} via Veridian Messages on {jira_key}]: {text_clean}",
+                            task_id=target_task_id,
+                            jira_key=jira_key,
+                        )
+                except Exception as slack_exc:
+                    logger.warning("Background Slack post error: %s", slack_exc)
+
+            background_tasks.add_task(_bg_sync)
+
             return {
                 "status": "processed",
                 "channel_key": channel_key,
                 "role": "employee",
-                "result": result,
+                "intent": analysis.intent,
+                "progress_pct": new_progress,
+                "bot_reply": bot_emp_reply,
             }
         else:
             # Manager messaging Veridian Bot: Natural language command interface!

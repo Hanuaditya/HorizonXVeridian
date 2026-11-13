@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { OrgOnboardingGuard, useAppAuth } from '@/providers/AuthBridge';
 import { useAgentStream } from '@/lib/sse';
 import Link from 'next/link';
@@ -197,6 +197,224 @@ function renderFormattedText(text: string): React.ReactNode {
   );
 }
 
+// Memoized message bubble to eliminate keystroke re-rendering
+const MessageBubble = React.memo(function MessageBubble({
+  m,
+  isCurrentUser,
+  isBot,
+  isAdmin,
+  onDirectMessage,
+  onApproveTickets,
+  sending,
+}: {
+  m: MessageItem;
+  isCurrentUser: boolean;
+  isBot: boolean;
+  isAdmin: boolean;
+  onDirectMessage: (name: string) => void;
+  onApproveTickets: () => void;
+  sending: boolean;
+}) {
+  const isBlocker =
+    m.kind === 'blocker_escalation' ||
+    m.text.includes('[URGENT BLOCKER ESCALATION]');
+  const isAlert =
+    !isBlocker &&
+    (m.kind === 'alert' ||
+      m.kind === 'compliance_alert' ||
+      m.text.includes('[IMMEDIATE COMPLIANCE ALERT]') ||
+      m.text.includes('[ALERT]'));
+  const isReviewMenu =
+    m.kind === 'review_menu' ||
+    m.text.includes('[MANAGER REVIEW MENU]');
+  const isDigest =
+    m.kind === 'progress_digest' ||
+    m.text.includes('[Progress Digest]') ||
+    m.text.includes('[Progress Update]');
+  const isCompleted =
+    m.kind === 'closure' ||
+    m.kind === 'closure_confirmation' ||
+    m.text.includes('[Task Completed');
+  const isAssignment =
+    m.kind === 'assignment' ||
+    m.text.includes('[1-on-1 Task Assignment');
+
+  const blockerAssignee =
+    (m.metadata?.assignee as string) ||
+    (m.text.match(/@([a-zA-Z0-9_\s]+?)\s+is BLOCKED/i)?.[1]?.trim());
+
+  return (
+    <div
+      key={m.id || `${m.created_at}-${m.text.slice(0, 10)}`}
+      className={cn('flex gap-3', isCurrentUser ? 'justify-end' : 'justify-start')}
+    >
+      {!isCurrentUser && (
+        <div
+          className={cn(
+            'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-sm',
+            isBot
+              ? 'bg-purple-600/30 text-purple-200 border border-purple-500/30'
+              : 'bg-dark-3 text-white/80 border border-white/[0.1]'
+          )}
+        >
+          {isBot ? <Bot className="size-4" /> : (m.sender || 'U')[0].toUpperCase()}
+        </div>
+      )}
+
+      <div className={cn('flex max-w-[76%] flex-col', isCurrentUser ? 'items-end' : 'items-start')}>
+        <div className="mb-1 flex items-center gap-2 text-[11px] text-white/40">
+          <span className="font-semibold text-white/70">{m.sender || 'Sender'}</span>
+          <span>·</span>
+          <span>
+            {m.created_at
+              ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : 'Just now'}
+          </span>
+          {m.jira_key && (
+            <span className="rounded bg-sky-500/20 px-1.5 py-0.2 font-mono text-[9px] font-bold text-sky-300">
+              {m.jira_key}
+            </span>
+          )}
+        </div>
+
+        {/* Message Bubble & Structured Cards */}
+        {isBlocker ? (
+          <div className="rounded-xl border border-rose-500/40 bg-rose-500/[0.1] p-4 text-xs text-rose-200 shadow-md">
+            <div className="flex items-center justify-between gap-2 font-semibold text-rose-300 mb-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="size-4 text-rose-400" />
+                <span className="uppercase tracking-wider text-[11px] font-bold">Urgent Blocker Escalation</span>
+              </div>
+              {m.jira_key && (
+                <span className="rounded bg-rose-500/20 px-2 py-0.5 font-mono text-[10px] text-rose-300 border border-rose-500/30">
+                  {m.jira_key}
+                </span>
+              )}
+            </div>
+            <div className="text-white/95 leading-relaxed">
+              {renderFormattedText(m.text)}
+            </div>
+            {isAdmin && (
+              <div className="mt-3 pt-2.5 border-t border-rose-500/20 flex items-center justify-between gap-3">
+                <span className="text-[11px] text-white/50">Employee needs unblocking</span>
+                <button
+                  type="button"
+                  onClick={() => onDirectMessage(blockerAssignee || m.text)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-400/50 bg-rose-500/20 px-3 py-1 text-xs font-semibold text-rose-200 hover:bg-rose-500/35 transition"
+                >
+                  <span>Message Directly</span>
+                  <ArrowRight className="size-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        ) : isAlert ? (
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-3.5 text-xs text-rose-200 shadow-md">
+            <div className="flex items-center gap-2 font-semibold text-rose-300 mb-1.5">
+              <ShieldAlert className="size-4" />
+              <span className="uppercase tracking-wider text-[11px] font-bold">Immediate Compliance Alert</span>
+            </div>
+            <div className="text-white/90 leading-relaxed">
+              {renderFormattedText(m.text)}
+            </div>
+          </div>
+        ) : isReviewMenu ? (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.08] p-4 text-xs text-amber-200 shadow-md">
+            <div className="flex items-center justify-between gap-2 font-semibold text-amber-300 mb-2">
+              <div className="flex items-center gap-2">
+                <Shield className="size-4" />
+                <span className="uppercase tracking-wider text-[11px] font-bold">Manager Review & Governance Gate</span>
+              </div>
+              <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] text-amber-300 border border-amber-500/30">
+                Zero Tickets Created
+              </span>
+            </div>
+            <div className="text-white/90 leading-relaxed">
+              {renderFormattedText(m.text)}
+            </div>
+            {isAdmin && (
+              <div className="mt-3 pt-2.5 border-t border-amber-500/20 flex items-center justify-between gap-3">
+                <span className="text-[11px] text-white/50">One-click Jira ticket dispatch & employee Slack DMs</span>
+                <button
+                  type="button"
+                  disabled={sending}
+                  onClick={onApproveTickets}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 transition shadow-sm disabled:opacity-40"
+                >
+                  <CheckCircle2 className="size-3.5" />
+                  <span>Approve & Create Tickets</span>
+                </button>
+              </div>
+            )}
+          </div>
+        ) : isDigest ? (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] p-3.5 text-xs text-emerald-200 shadow-md">
+            <div className="flex items-center justify-between gap-2 font-semibold text-emerald-300 mb-1.5">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="size-4" />
+                <span className="uppercase tracking-wider text-[11px] font-bold">Sprint Progress Digest</span>
+              </div>
+              {m.jira_key && (
+                <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-[10px] text-emerald-300 border border-emerald-500/30">
+                  {m.jira_key}
+                </span>
+              )}
+            </div>
+            <div className="text-white/90 leading-relaxed">
+              {renderFormattedText(m.text)}
+            </div>
+          </div>
+        ) : isCompleted ? (
+          <div className="rounded-xl border border-teal-500/30 bg-teal-500/[0.08] p-3.5 text-xs text-teal-200 shadow-md">
+            <div className="flex items-center justify-between gap-2 font-semibold text-teal-300 mb-1.5">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="size-4" />
+                <span className="uppercase tracking-wider text-[11px] font-bold">Task Completed & Ticket Closed</span>
+              </div>
+              {m.jira_key && (
+                <span className="rounded bg-teal-500/20 px-2 py-0.5 font-mono text-[10px] text-teal-300 border border-teal-500/30">
+                  {m.jira_key}
+                </span>
+              )}
+            </div>
+            <div className="text-white/90 leading-relaxed">
+              {renderFormattedText(m.text)}
+            </div>
+          </div>
+        ) : isAssignment ? (
+          <div className="rounded-xl border border-sky-500/30 bg-sky-500/[0.08] p-3.5 text-xs text-sky-200 shadow-md">
+            <div className="flex items-center justify-between gap-2 font-semibold text-sky-300 mb-1.5">
+              <div className="flex items-center gap-2">
+                <Ticket className="size-4" />
+                <span className="uppercase tracking-wider text-[11px] font-bold">1-on-1 Task Assignment</span>
+              </div>
+              {m.jira_key && (
+                <span className="rounded bg-sky-500/20 px-2 py-0.5 font-mono text-[10px] text-sky-300 border border-sky-500/30">
+                  {m.jira_key}
+                </span>
+              )}
+            </div>
+            <div className="text-white/90 leading-relaxed">
+              {renderFormattedText(m.text)}
+            </div>
+          </div>
+        ) : (
+          <div
+            className={cn(
+              'rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm',
+              isCurrentUser
+                ? 'bg-blue-1 text-white rounded-tr-sm'
+                : 'bg-dark-2 border border-white/[0.07] text-slate-100 rounded-tl-sm'
+            )}
+          >
+            {renderFormattedText(m.text)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
 export default function MessagesPage() {
   return (
     <OrgOnboardingGuard pageName="Messages Workspace">
@@ -224,10 +442,10 @@ function MessagesWorkspace() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // SSE Stream for live event push
-  const { agentState, refreshState } = useAgentStream(activeThreadId);
+  const { refreshState } = useAgentStream(activeThreadId);
 
   // 1. Load threads
-  const loadThreads = async () => {
+  const loadThreads = useCallback(async () => {
     try {
       const res = await fetch('/api/workos/messages/threads');
       if (res.ok) {
@@ -243,41 +461,55 @@ function MessagesWorkspace() {
     } finally {
       setLoadingThreads(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadThreads();
     const interval = setInterval(loadThreads, 4000);
     return () => clearInterval(interval);
-  }, []);
+  }, [loadThreads]);
 
-  // 2. Load messages for active channel
-  const loadChannelMessages = async (chKey: string) => {
-    setLoadingMessages(true);
+  // 2. Load messages for active channel (silent polling support)
+  const loadChannelMessages = useCallback(async (chKey: string, silent: boolean = false) => {
+    if (!silent) {
+      setLoadingMessages(true);
+    }
     try {
       const qs = activeThreadId ? `?thread_id=${encodeURIComponent(activeThreadId)}` : '';
       const res = await fetch(`/api/workos/messages/${encodeURIComponent(chKey)}${qs}`);
       if (res.ok) {
         const data = await res.json();
-        setMessages(data.messages || []);
+        const incoming: MessageItem[] = data.messages || [];
+        setMessages((prev) => {
+          // If message counts and last IDs match, avoid full re-render
+          if (
+            prev.length === incoming.length &&
+            prev.length > 0 &&
+            prev[prev.length - 1]?.id === incoming[incoming.length - 1]?.id
+          ) {
+            return prev;
+          }
+          return incoming;
+        });
       }
     } catch {
       // Offline tolerance
     } finally {
-      setLoadingMessages(false);
+      if (!silent) {
+        setLoadingMessages(false);
+      }
     }
-  };
+  }, [activeThreadId]);
 
   useEffect(() => {
     if (activeChannelKey) {
-      loadChannelMessages(activeChannelKey);
+      loadChannelMessages(activeChannelKey, false);
       const interval = setInterval(() => {
-        loadChannelMessages(activeChannelKey);
+        loadChannelMessages(activeChannelKey, true);
       }, 3000);
       return () => clearInterval(interval);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChannelKey, activeThreadId]);
+  }, [activeChannelKey, loadChannelMessages]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -335,15 +567,47 @@ function MessagesWorkspace() {
     });
   }, [filteredThreads, currentUserName, currentUserEmail, currentUserId]);
 
-  // Handle Send Message
+  // Find logged-in employee's assigned ticket for MY SPRINT TICKET card
+  const myEmployeeTicket = useMemo(() => {
+    for (const t of threads) {
+      const member = t.member;
+      const memName = (member?.name || t.title || '').toLowerCase();
+      const memEmail = (member?.email || '').toLowerCase();
+      const memId = (member?.id || '').toLowerCase();
+
+      if (
+        (currentUserName && (memName.includes(currentUserName) || currentUserName.includes(memName))) ||
+        (currentUserEmail && memEmail === currentUserEmail) ||
+        (currentUserId && memId && memId.includes(currentUserId))
+      ) {
+        if (t.active_ticket) return t.active_ticket;
+      }
+    }
+    if (activeThread?.active_ticket && !isAdmin) return activeThread.active_ticket;
+    const anyWithTicket = threads.find((t) => t.active_ticket);
+    return anyWithTicket?.active_ticket || null;
+  }, [threads, activeThread, currentUserName, currentUserEmail, currentUserId, isAdmin]);
+
+  // Handle Send Message with Instant Optimistic UI Update (<10ms)
   const handleSendMessage = async (customText?: string) => {
     const textToSend = (customText ?? inputText).trim();
     if (!textToSend || sending) return;
 
-    setSending(true);
+    // Instant optimistic update
+    const optimisticMsg: MessageItem = {
+      id: `temp-${Date.now()}`,
+      sender: user?.fullName || user?.username || (isAdmin ? 'Manager' : 'You'),
+      sender_id: userId || 'temp-id',
+      role: isAdmin ? 'manager' : 'user',
+      text: textToSend,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+
     if (!customText) {
       setInputText('');
     }
+    setSending(true);
 
     try {
       const res = await fetch(`/api/workos/messages/${encodeURIComponent(activeChannelKey)}`, {
@@ -356,42 +620,33 @@ function MessagesWorkspace() {
         }),
       });
 
+      // Reset sending immediately when fast API responds (<300ms)
+      setSending(false);
+
       if (res.ok) {
-        await loadChannelMessages(activeChannelKey);
-        await refreshState();
-        await loadThreads();
+        loadChannelMessages(activeChannelKey, true);
+        refreshState();
+        loadThreads();
       }
     } catch {
-      // Ignore network errors
-    } finally {
       setSending(false);
     }
   };
 
-  // Handle Manager Ping Check-In for specific employee
-  const handlePingEmployee = async (empName: string) => {
-    setPingingUser(empName);
-    try {
-      if (activeThreadId) {
-        await fetch(`/api/workos/threads/${encodeURIComponent(activeThreadId)}/checkin`, {
-          method: 'POST',
-        });
-      }
-      await loadChannelMessages('veridian-bot');
-      await refreshState();
-      await loadThreads();
-    } catch {
-      // Ignore
-    } finally {
-      setPingingUser(null);
-    }
-  };
-
-  // Handle Check-In All
-  const handleCheckInAll = async () => {
+  // Manager-Only Check-In Trigger
+  const handleCheckInTrigger = async () => {
+    if (!isAdmin) return;
     setPingingUser('all');
     try {
-      await handleSendMessage('Check in with team now');
+      await fetch('/api/workos/checkin/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thread_id: activeThreadId }),
+      });
+      loadChannelMessages(activeChannelKey, true);
+      loadThreads();
+    } catch {
+      // Ignore
     } finally {
       setPingingUser(null);
     }
@@ -423,6 +678,27 @@ function MessagesWorkspace() {
   }, [isAdmin]);
 
   const activeIsOnLeave = (activeThread?.hr_status || '').toLowerCase().includes('leave');
+
+  const handleDirectMessage = useCallback(
+    (name: string) => {
+      const targetEmp = dmThreads.find((t) => {
+        const tName = t.title.toLowerCase();
+        const bName = name.toLowerCase();
+        return (
+          (bName && (tName.includes(bName) || bName.includes(tName))) ||
+          bName.includes(tName)
+        );
+      });
+      if (targetEmp) {
+        setActiveChannelKey(targetEmp.channel_key);
+      }
+    },
+    [dmThreads]
+  );
+
+  const handleApproveTickets = useCallback(() => {
+    handleSendMessage('Approve sprint tickets');
+  }, [handleSendMessage]);
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-dark-1 text-white rounded-none border-0">
@@ -598,35 +874,28 @@ function MessagesWorkspace() {
               {(user?.fullName || user?.username || 'U')[0].toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-xs font-semibold text-white/90">
-                {user?.fullName || user?.username || 'Current User'}
+              <p className="truncate text-xs font-semibold text-white">
+                {user?.fullName || user?.username || 'You'}
               </p>
-              <p className="truncate text-[10px] font-mono text-white/40">{orgRole || 'org:member'}</p>
+              <p className="truncate text-[10px] text-white/40">{isAdmin ? 'Org Admin' : 'Org Member'}</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={loadThreads}
-            title="Refresh Threads"
-            className="rounded p-1.5 text-white/40 hover:bg-white/[0.08] hover:text-white transition"
-          >
-            <RefreshCw className="size-3.5" />
-          </button>
+          <span className="size-2 rounded-full bg-emerald-400" title="Online" />
         </div>
       </aside>
 
       {/* ======================================================== */}
       {/* COLUMN 2: CENTER CONVERSATION STREAM                     */}
       {/* ======================================================== */}
-      <main className="flex flex-1 flex-col h-full bg-dark-2/35 min-w-0">
-        {/* Flush Top Header */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.08] px-6 bg-dark-1/80 backdrop-blur-sm">
+      <main className="flex flex-1 flex-col h-full overflow-hidden bg-dark-1 min-w-0">
+        {/* Header */}
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.08] px-6 bg-dark-1">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-dark-3 border border-white/[0.08] text-white">
+            <div className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-dark-3 border border-white/[0.08]">
               {activeThread?.role === 'bot' ? (
                 <Bot className="size-5 text-purple-300" />
               ) : (
-                <span className="text-xs font-bold">
+                <span className="text-sm font-bold text-white">
                   {(activeThread?.title || 'U')[0].toUpperCase()}
                 </span>
               )}
@@ -666,23 +935,23 @@ function MessagesWorkspace() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Quick Check-In Trigger */}
-            <button
-              type="button"
-              disabled={pingingUser !== null}
-              onClick={() => {
-                if (activeThread?.role === 'bot') {
-                  handleCheckInAll();
-                } else if (activeThread?.title) {
-                  handlePingEmployee(activeThread.title);
-                }
-              }}
-              className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-1/15 px-3 py-1.5 text-xs font-semibold text-blue-200 transition hover:bg-blue-1 hover:text-white disabled:opacity-40"
-              title="Trigger sprint check-in"
-            >
-              <Zap className="size-3.5 text-blue-400" />
-              <span>Check-In</span>
-            </button>
+            {/* Quick Check-In Trigger - Manager ONLY */}
+            {isAdmin && (
+              <button
+                type="button"
+                disabled={pingingUser !== null}
+                onClick={handleCheckInTrigger}
+                className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-1/15 px-3 py-1.5 text-xs font-semibold text-blue-200 transition hover:bg-blue-1 hover:text-white disabled:opacity-40"
+                title="Trigger sprint check-in across all assigned engineers"
+              >
+                {pingingUser === 'all' ? (
+                  <RefreshCw className="size-3.5 animate-spin text-blue-400" />
+                ) : (
+                  <Zap className="size-3.5 text-blue-400" />
+                )}
+                <span>Check-In All</span>
+              </button>
+            )}
 
             {/* Open in Slack */}
             <a
@@ -727,228 +996,31 @@ function MessagesWorkspace() {
               </div>
               <h4 className="text-sm font-semibold text-white">No messages yet</h4>
               <p className="mt-1 max-w-sm text-xs text-white/50">
-                No messages yet — send a message or trigger a sprint check-in below.
+                {isAdmin
+                  ? 'No messages yet — send a command or trigger a sprint check-in below.'
+                  : 'No messages yet — your assigned sprint check-ins and bot responses will appear here.'}
               </p>
-              {loadingMessages && (
-                <span className="mt-2 flex items-center gap-1 text-[10px] text-white/30">
-                  <RefreshCw className="size-2.5 animate-spin" /> Checking stream...
-                </span>
-              )}
             </div>
           ) : (
             messages.map((m) => {
               const isBot = m.role === 'bot' || m.sender === 'Veridian Bot';
               const isCurrentUser =
                 m.sender_id === userId ||
-                (user?.fullName && m.sender === user.fullName);
-              const isBlocker =
-                m.kind === 'blocker_escalation' ||
-                m.text.includes('[URGENT BLOCKER ESCALATION]');
-              const isAlert =
-                !isBlocker &&
-                (m.kind === 'alert' ||
-                  m.kind === 'compliance_alert' ||
-                  m.text.includes('[IMMEDIATE COMPLIANCE ALERT]'));
-              const isReviewMenu =
-                m.kind === 'review_menu' ||
-                m.text.includes('[MANAGER REVIEW MENU]');
-              const isDigest =
-                m.kind === 'progress_digest' ||
-                m.text.includes('[Progress Digest]') ||
-                m.text.includes('[Progress Update]');
-              const isCompleted =
-                m.kind === 'closure' ||
-                m.kind === 'closure_confirmation' ||
-                m.text.includes('[Task Completed');
-              const isAssignment =
-                m.kind === 'assignment' ||
-                m.text.includes('[1-on-1 Task Assignment');
-
-              const blockerAssignee =
-                (m.metadata?.assignee as string) ||
-                (m.text.match(/@([a-zA-Z0-9_\s]+?)\s+is BLOCKED/i)?.[1]?.trim());
+                (user?.fullName && m.sender === user.fullName) ||
+                m.role === 'user' ||
+                (isAdmin && m.role === 'manager' && m.sender !== 'Veridian Bot');
 
               return (
-                <div
+                <MessageBubble
                   key={m.id || `${m.created_at}-${m.text.slice(0, 10)}`}
-                  className={cn('flex gap-3', isCurrentUser ? 'justify-end' : 'justify-start')}
-                >
-                  {!isCurrentUser && (
-                    <div
-                      className={cn(
-                        'flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-sm',
-                        isBot
-                          ? 'bg-purple-600/30 text-purple-200 border border-purple-500/30'
-                          : 'bg-dark-3 text-white/80 border border-white/[0.1]'
-                      )}
-                    >
-                      {isBot ? <Bot className="size-4" /> : (m.sender || 'U')[0].toUpperCase()}
-                    </div>
-                  )}
-
-                  <div className={cn('flex max-w-[76%] flex-col', isCurrentUser ? 'items-end' : 'items-start')}>
-                    <div className="mb-1 flex items-center gap-2 text-[11px] text-white/40">
-                      <span className="font-semibold text-white/70">{m.sender || 'Sender'}</span>
-                      <span>·</span>
-                      <span>
-                        {m.created_at
-                          ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                          : 'Just now'}
-                      </span>
-                      {m.jira_key && (
-                        <span className="rounded bg-sky-500/20 px-1.5 py-0.2 font-mono text-[9px] font-bold text-sky-300">
-                          {m.jira_key}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Message Bubble & Structured Cards */}
-                    {isBlocker ? (
-                      <div className="rounded-xl border border-rose-500/40 bg-rose-500/[0.1] p-4 text-xs text-rose-200 shadow-md">
-                        <div className="flex items-center justify-between gap-2 font-semibold text-rose-300 mb-2">
-                          <div className="flex items-center gap-2">
-                            <AlertTriangle className="size-4 text-rose-400" />
-                            <span className="uppercase tracking-wider text-[11px] font-bold">Urgent Blocker Escalation</span>
-                          </div>
-                          {m.jira_key && (
-                            <span className="rounded bg-rose-500/20 px-2 py-0.5 font-mono text-[10px] text-rose-300 border border-rose-500/30">
-                              {m.jira_key}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-white/95 leading-relaxed">
-                          {renderFormattedText(m.text)}
-                        </div>
-                        {isAdmin && (
-                          <div className="mt-3 pt-2.5 border-t border-rose-500/20 flex items-center justify-between gap-3">
-                            <span className="text-[11px] text-white/50">Employee needs unblocking</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const targetEmp = dmThreads.find((t) => {
-                                  const tName = t.title.toLowerCase();
-                                  const bName = (blockerAssignee || '').toLowerCase();
-                                  return (
-                                    (bName && (tName.includes(bName) || bName.includes(tName))) ||
-                                    m.text.toLowerCase().includes(tName)
-                                  );
-                                });
-                                if (targetEmp) {
-                                  setActiveChannelKey(targetEmp.channel_key);
-                                }
-                              }}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-400/50 bg-rose-500/20 px-3 py-1 text-xs font-semibold text-rose-200 hover:bg-rose-500/35 transition"
-                            >
-                              <span>Message Directly</span>
-                              <ArrowRight className="size-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ) : isAlert ? (
-                      <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-3.5 text-xs text-rose-200 shadow-md">
-                        <div className="flex items-center gap-2 font-semibold text-rose-300 mb-1.5">
-                          <ShieldAlert className="size-4" />
-                          <span className="uppercase tracking-wider text-[11px] font-bold">Immediate Compliance Alert</span>
-                        </div>
-                        <div className="text-white/90 leading-relaxed">
-                          {renderFormattedText(m.text)}
-                        </div>
-                      </div>
-                    ) : isReviewMenu ? (
-                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.08] p-4 text-xs text-amber-200 shadow-md">
-                        <div className="flex items-center justify-between gap-2 font-semibold text-amber-300 mb-2">
-                          <div className="flex items-center gap-2">
-                            <Shield className="size-4" />
-                            <span className="uppercase tracking-wider text-[11px] font-bold">Manager Review & Governance Gate</span>
-                          </div>
-                          <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] text-amber-300 border border-amber-500/30">
-                            Zero Tickets Created
-                          </span>
-                        </div>
-                        <div className="text-white/90 leading-relaxed">
-                          {renderFormattedText(m.text)}
-                        </div>
-                        {isAdmin && (
-                          <div className="mt-3 pt-2.5 border-t border-amber-500/20 flex items-center justify-between gap-3">
-                            <span className="text-[11px] text-white/50">One-click Jira ticket dispatch & employee Slack DMs</span>
-                            <button
-                              type="button"
-                              disabled={sending}
-                              onClick={() => handleSendMessage('Approve sprint tickets')}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 transition shadow-sm disabled:opacity-40"
-                            >
-                              <CheckCircle2 className="size-3.5" />
-                              <span>Approve & Create Tickets</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ) : isDigest ? (
-                      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] p-3.5 text-xs text-emerald-200 shadow-md">
-                        <div className="flex items-center justify-between gap-2 font-semibold text-emerald-300 mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 className="size-4" />
-                            <span className="uppercase tracking-wider text-[11px] font-bold">Sprint Progress Digest</span>
-                          </div>
-                          {m.jira_key && (
-                            <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-[10px] text-emerald-300 border border-emerald-500/30">
-                              {m.jira_key}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-white/90 leading-relaxed">
-                          {renderFormattedText(m.text)}
-                        </div>
-                      </div>
-                    ) : isCompleted ? (
-                      <div className="rounded-xl border border-teal-500/30 bg-teal-500/[0.08] p-3.5 text-xs text-teal-200 shadow-md">
-                        <div className="flex items-center justify-between gap-2 font-semibold text-teal-300 mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 className="size-4" />
-                            <span className="uppercase tracking-wider text-[11px] font-bold">Task Completed & Ticket Closed</span>
-                          </div>
-                          {m.jira_key && (
-                            <span className="rounded bg-teal-500/20 px-2 py-0.5 font-mono text-[10px] text-teal-300 border border-teal-500/30">
-                              {m.jira_key}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-white/90 leading-relaxed">
-                          {renderFormattedText(m.text)}
-                        </div>
-                      </div>
-                    ) : isAssignment ? (
-                      <div className="rounded-xl border border-sky-500/30 bg-sky-500/[0.08] p-3.5 text-xs text-sky-200 shadow-md">
-                        <div className="flex items-center justify-between gap-2 font-semibold text-sky-300 mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <Ticket className="size-4" />
-                            <span className="uppercase tracking-wider text-[11px] font-bold">1-on-1 Task Assignment</span>
-                          </div>
-                          {m.jira_key && (
-                            <span className="rounded bg-sky-500/20 px-2 py-0.5 font-mono text-[10px] text-sky-300 border border-sky-500/30">
-                              {m.jira_key}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-white/90 leading-relaxed">
-                          {renderFormattedText(m.text)}
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        className={cn(
-                          'rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm',
-                          isCurrentUser
-                            ? 'bg-blue-1 text-white rounded-tr-sm'
-                            : 'bg-dark-2 border border-white/[0.07] text-slate-100 rounded-tl-sm'
-                        )}
-                      >
-                        {renderFormattedText(m.text)}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  m={m}
+                  isCurrentUser={Boolean(isCurrentUser)}
+                  isBot={Boolean(isBot)}
+                  isAdmin={Boolean(isAdmin)}
+                  onDirectMessage={handleDirectMessage}
+                  onApproveTickets={handleApproveTickets}
+                  sending={sending}
+                />
               );
             })
           )}
@@ -1036,7 +1108,7 @@ function MessagesWorkspace() {
                 : `${activeThread?.subtitle || 'Backend Engineer'} • ${activeIsOnLeave ? 'On Paternity Leave' : 'Active'}`}
             </p>
 
-            {/* 3 Circular Quick-Action Icon Buttons */}
+            {/* Quick-Action Icon Buttons */}
             <div className="mt-4 flex items-center justify-center gap-3">
               {/* 1. Open Slack */}
               <a
@@ -1049,26 +1121,22 @@ function MessagesWorkspace() {
                 <ExternalLink className="size-4" />
               </a>
 
-              {/* 2. Ping Check-In */}
-              <button
-                type="button"
-                disabled={activeIsOnLeave || pingingUser !== null}
-                onClick={() => {
-                  if (activeThread?.role === 'bot') {
-                    handleCheckInAll();
-                  } else if (activeThread?.title) {
-                    handlePingEmployee(activeThread.title);
-                  }
-                }}
-                title={activeIsOnLeave ? 'Member on leave' : 'Ping Check-In DM'}
-                className="flex size-9 items-center justify-center rounded-full bg-dark-3/80 border border-white/[0.08] text-white/70 hover:text-amber-400 hover:border-white/[0.2] transition disabled:opacity-30"
-              >
-                {pingingUser ? (
-                  <RefreshCw className="size-4 animate-spin text-blue-400" />
-                ) : (
-                  <Zap className="size-4" />
-                )}
-              </button>
+              {/* 2. Ping Check-In - Manager ONLY */}
+              {isAdmin && (
+                <button
+                  type="button"
+                  disabled={activeIsOnLeave || pingingUser !== null}
+                  onClick={handleCheckInTrigger}
+                  title="Trigger sprint check-in DMs"
+                  className="flex size-9 items-center justify-center rounded-full bg-dark-3/80 border border-white/[0.08] text-white/70 hover:text-amber-400 hover:border-white/[0.2] transition disabled:opacity-30"
+                >
+                  {pingingUser ? (
+                    <RefreshCw className="size-4 animate-spin text-blue-400" />
+                  ) : (
+                    <Zap className="size-4" />
+                  )}
+                </button>
+              )}
 
               {/* 3. Open Jira */}
               <Link
@@ -1085,7 +1153,7 @@ function MessagesWorkspace() {
           <div className="px-4 py-4 space-y-4">
             {/* Section 1: Live Jira & Sprint Progress */}
             <div>
-              {activeThread?.role === 'bot' ? (
+              {isAdmin ? (
                 // Manager/Bot Overview: Team sprint progress rows
                 <div>
                   <div className="flex items-center justify-between mb-3">
@@ -1095,7 +1163,7 @@ function MessagesWorkspace() {
                     <button
                       type="button"
                       disabled={pingingUser !== null}
-                      onClick={handleCheckInAll}
+                      onClick={handleCheckInTrigger}
                       className="flex items-center gap-1 rounded-md border border-blue-500/30 bg-blue-1/15 px-2 py-0.5 text-[10px] font-semibold text-blue-200 transition hover:bg-blue-1 hover:text-white disabled:opacity-40"
                     >
                       {pingingUser === 'all' ? (
@@ -1160,44 +1228,44 @@ function MessagesWorkspace() {
                   </div>
                 </div>
               ) : (
-                // Individual Employee Selection: Their specific ticket details
+                // Employee View: MY SPRINT TICKET
                 <div>
                   <div className="mb-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-white/50">
-                      Assigned Sprint Ticket
+                      My Sprint Ticket
                     </span>
                   </div>
 
-                  {activeThread?.active_ticket ? (
+                  {myEmployeeTicket ? (
                     <div className="rounded-xl border border-sky-400/30 bg-dark-3/50 p-3.5 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="font-mono font-bold text-sky-300">
-                          {activeThread.active_ticket.key}
+                          {myEmployeeTicket.key}
                         </span>
                         <span className="rounded bg-sky-500/20 px-1.5 py-0.2 text-[9px] font-bold text-sky-200 uppercase">
-                          {activeThread.active_ticket.status}
+                          {myEmployeeTicket.status}
                         </span>
                       </div>
                       <h4 className="mt-2 text-xs font-semibold text-white">
-                        {activeThread.active_ticket.title}
+                        {myEmployeeTicket.title}
                       </h4>
 
                       <div className="mt-3">
                         <div className="flex items-center justify-between text-[10px] text-white/50 mb-1">
                           <span>Progress</span>
-                          <span className="font-mono">{activeThread.active_ticket.progress_pct}%</span>
+                          <span className="font-mono">{myEmployeeTicket.progress_pct}%</span>
                         </div>
                         <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
                           <div
                             className="h-full bg-blue-1 transition-all duration-300"
-                            style={{ width: `${activeThread.active_ticket.progress_pct}%` }}
+                            style={{ width: `${myEmployeeTicket.progress_pct}%` }}
                           />
                         </div>
                       </div>
 
-                      {activeThread.active_ticket.jira_url && (
+                      {myEmployeeTicket.jira_url && (
                         <a
-                          href={activeThread.active_ticket.jira_url}
+                          href={myEmployeeTicket.jira_url}
                           target="_blank"
                           rel="noreferrer"
                           className="mt-3.5 flex items-center justify-center gap-1.5 rounded-lg bg-blue-1 py-1.5 text-xs font-semibold text-white shadow transition hover:bg-blue-1/90"
@@ -1211,8 +1279,8 @@ function MessagesWorkspace() {
                     <div className="rounded-xl border border-white/[0.07] bg-dark-3/50 p-4 text-center">
                       <p className="text-xs text-white/60">
                         {activeIsOnLeave
-                          ? 'Employee currently on approved leave.'
-                          : 'No active Jira ticket assigned.'}
+                          ? 'You are currently on approved leave.'
+                          : 'No active sprint ticket assigned. Waiting for sprint approval.'}
                       </p>
                     </div>
                   )}

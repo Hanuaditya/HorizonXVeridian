@@ -20,8 +20,15 @@ const VIDEO_ROUTES = [
 
 export default function StreamClientProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const isExcludedRoute =
+    !pathname ||
+    pathname.startsWith('/messages') ||
+    pathname.startsWith('/workos') ||
+    pathname.startsWith('/admin');
+
   const isVideoRoute =
-    VIDEO_ROUTES.includes(pathname) || (pathname?.startsWith('/meeting/') ?? false);
+    !isExcludedRoute &&
+    (VIDEO_ROUTES.includes(pathname) || pathname.startsWith('/meeting/'));
 
   const [videoClient, setVideoClient] = useState<StreamVideoClient | null>(null);
   const { user, isLoaded } = useAppUser();
