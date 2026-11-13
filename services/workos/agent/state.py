@@ -59,6 +59,8 @@ class Task(TypedDict, total=False):
     completed_milestones: Optional[str]
     blockers: Optional[str]
     commit_summary: Optional[str]
+    checkin_stage: Optional[int]
+    awaiting_employee_reply: Optional[bool]
 
 
 def update_tasks_reducer(

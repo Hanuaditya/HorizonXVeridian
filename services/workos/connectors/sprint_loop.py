@@ -27,6 +27,7 @@ from connectors.slack_ops import (
 )
 from core.config import get_settings
 from core.evon_llm import structured_output, wrap_untrusted_data
+from core.identifiers import canonical_employee_key, clean_task_title
 from core.store import (
     get_thread_snapshot,
     list_open_slack_threads_all,
@@ -82,7 +83,9 @@ Extract progress_pct (0-100), concise completed_milestones, blockers ('None' if 
 
 def _deterministic_analyze_reply(reply_text: str, task_title: str) -> CheckinReplyAnalysis:
     low = (reply_text or "").lower()
-    is_done = any(
+    pct_match = re.search(r"(\d{1,3})\s*%", low)
+    has_sub_100_pct = bool(pct_match and int(pct_match.group(1)) < 100)
+    is_done = not has_sub_100_pct and any(
         w in low
         for w in (
             "completed",
@@ -96,10 +99,8 @@ def _deterministic_analyze_reply(reply_text: str, task_title: str) -> CheckinRep
             "ho gaya",
             "kar diya",
         )
-    ) and not any(w in low for w in ("not completed", "not done", "almost done", "50%", "60%", "70%", "80%"))
+    ) and not any(w in low for w in ("not completed", "not done", "almost done"))
     is_blocked = any(w in low for w in ("blocked", "stuck", "error", "denied", "failed", "waiting on"))
-
-    pct_match = re.search(r"(\d{1,3})\s*%", low)
     if is_done:
         return CheckinReplyAnalysis(
             intent="COMPLETED",
@@ -305,7 +306,13 @@ async def _auto_checkin_scheduler(org_id: str, thread_id: str) -> None:
 
 
 async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, Any]:
-    """Send 1-on-1 check-in DMs to each assigned employee for open DISPATCHED tickets."""
+    """Send Stage-1 check-in DMs to each assigned employee for open tickets not yet started.
+
+    State machine:
+      checkin_stage == 0 → send Stage 1, set checkin_stage=1, awaiting_employee_reply=True
+      checkin_stage == 1 and awaiting_employee_reply == True → skip (never double-send)
+      checkin_stage >= 2 → skip (already in Stage 2 or completed)
+    """
     snap = get_thread_snapshot(thread_id)
     if not snap or snap.get("org_id") != org_id:
         raise KeyError(f"Thread '{thread_id}' not found for org '{org_id}'.")
@@ -319,12 +326,36 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
 
     slack_feed_msgs = list_slack_feed(org_id=org_id, thread_id=thread_id)
     sent_items: List[Dict[str, Any]] = []
+    tasks_updated: Dict[str, Any] = {}
+
     for tid, task in tasks.items():
+        task = dict(task)
+        if task.get("status") == "DONE":
+            continue
         if task.get("status") not in {"DISPATCHED", "OPEN", "BLOCKED"}:
             continue
         jira_key = task.get("jira_ticket_id") or task.get("jira_key")
         if not jira_key:
             continue
+
+        checkin_stage = int(task.get("checkin_stage") or 0)
+        awaiting_reply = bool(task.get("awaiting_employee_reply", False))
+
+        # State-machine guard: skip if already awaiting employee reply (stage 1)
+        if checkin_stage == 1 and awaiting_reply:
+            logger.info(
+                "trigger_checkin_for_thread: task %s is in stage 1 awaiting reply — skipping duplicate send.",
+                tid,
+            )
+            continue
+        # Skip if already at stage 2+
+        if checkin_stage >= 2:
+            logger.info(
+                "trigger_checkin_for_thread: task %s already at stage %d — skipping.",
+                tid, checkin_stage,
+            )
+            continue
+
         assignee = str(task.get("rerouted_assignee") or task.get("assignee") or "Engineer")
         raw_title = str(task.get("reframed_title") or task.get("title") or tid)
         title = raw_title
@@ -357,6 +388,7 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
             logger.info("trigger_checkin_for_thread: checkin for task %s sent <10s ago, skipping duplicate.", tid)
             continue
 
+        # Post Stage 1 checkin DM to employee
         ok, ch, ts = post_employee_checkin_dm(
             org_id=org_id,
             thread_id=thread_id,
@@ -369,6 +401,12 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
             checkin_round=round_num,
             domain_context=str(task.get("domain") or ""),
         )
+
+        # Update task state machine fields
+        task["checkin_stage"] = 1
+        task["awaiting_employee_reply"] = True
+        tasks_updated[tid] = task
+
         sent_items.append({
             "task_id": tid,
             "jira_key": jira_key,
@@ -376,7 +414,12 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
             "sent": ok,
             "slack_channel": ch,
             "slack_ts": ts,
+            "checkin_stage": 1,
         })
+
+    # Persist updated task states
+    merged_tasks = dict(tasks)
+    merged_tasks.update(tasks_updated)
 
     settings = get_settings()
     save_thread_snapshot(
@@ -384,6 +427,7 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
         org_id=org_id,
         snapshot={
             **snap,
+            "tasks": merged_tasks,
             "next_checkin_at": time.time() + max(10, settings.checkin_interval_seconds),
             "slack_feed": list_slack_feed(org_id=org_id, thread_id=thread_id),
         },
@@ -396,7 +440,7 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
             thread_id=thread_id,
             event_type="CHECKIN_SENT",
             agent_node="sprint_checkin_scheduler",
-            detail=f"Sent scheduled check-in DMs to {len(sent_items)} assignee(s).",
+            detail=f"Sent Stage-1 check-in DMs to {len(sent_items)} assignee(s).",
             provenance_tag="Interval Sprint Check-In Loop",
         )
         await sse_manager.push_event(
@@ -405,7 +449,7 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
             {
                 "source": "checkin_scheduler",
                 "sent_checkins": sent_items,
-                "tasks": snap.get("tasks"),
+                "tasks": merged_tasks,
                 "dispatched_tickets": snap.get("dispatched_tickets", []),
                 "slack_feed": list_slack_feed(org_id=org_id, thread_id=thread_id),
             },
@@ -413,6 +457,177 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
         )
 
     return {"thread_id": thread_id, "checkins_sent": sent_items}
+
+
+def notify_manager_employee_update(
+    org_id: str,
+    thread_id: str,
+    employee_name: str,
+    task: Dict[str, Any],
+    update_text: str,
+    source: str = "WorkOS Messages",
+    intent: Optional[str] = None,
+    progress_pct: Optional[int] = None,
+    blockers: Optional[str] = None,
+    jira_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Auto-push executive summary to Manager's veridian-bot thread and Slack DM."""
+    tid = task.get("task_id") or "t1"
+    jkey = jira_key or str(task.get("jira_ticket_id") or task.get("jira_key") or tid)
+    raw_title = str(task.get("reframed_title") or task.get("title") or "Sprint Task")
+    clean_title = clean_task_title(raw_title)
+
+    if intent is None:
+        analysis = analyze_employee_reply(update_text, clean_title, False)
+        intent = analysis.intent
+        if progress_pct is None:
+            progress_pct = analysis.progress_pct
+        if blockers is None:
+            blockers = analysis.blockers
+
+    pct = 100 if intent == "COMPLETED" else (progress_pct if progress_pct is not None else 0)
+
+    if intent == "COMPLETED":
+        summary_kind = "closure"
+        prefix = f"[Task Completed — @{employee_name}]"
+        mgr_text = (
+            f"*{prefix}* [Task Completed] `{jkey}`: *{employee_name}* finished '{clean_title}'. "
+            f"Jira ticket closed."
+        )
+    elif intent == "BLOCKED":
+        summary_kind = "blocker_escalation"
+        prefix = f"[Blocker Alert — @{employee_name}]"
+        mgr_text = (
+            f"*{prefix}* [URGENT BLOCKER ESCALATION] `{jkey}` (@{employee_name}):\n"
+            f"• *Task:* {clean_title}\n"
+            f"• *Blocker:* {blockers or update_text}"
+        )
+    else:
+        summary_kind = "progress_digest"
+        concise = update_text.strip().replace("\n", " ")[:140]
+        src_tag = "Slack DM Summary" if "slack" in source.lower() else "WorkOS Messages Summary"
+        prefix = f"[{src_tag} — @{employee_name}]"
+        mgr_text = (
+            f"*{prefix}* [Progress Digest] `{jkey}` (@{employee_name}): *{pct}% complete*\n"
+            f"• *Task:* {clean_title}\n"
+            f"• *Update:* \"{concise}\""
+        )
+
+    # In-App Manager Feed (stored under recipient="manager" so it reaches all manager keys)
+    msg = record_slack_feed_message(
+        org_id=org_id,
+        thread_id=thread_id,
+        role="manager",
+        sender="Veridian Bot",
+        recipient="manager",
+        text=mgr_text,
+        kind=summary_kind,
+        task_id=tid,
+        jira_key=jkey,
+        metadata={
+            "type": "employee_summary",
+            "employee": employee_name,
+            "source": source,
+            "progress_pct": pct,
+            "task_title": clean_title,
+            "blockers": blockers,
+            "recipient_id": "manager:veridian-bot",
+        },
+    )
+
+    # Also post to Manager via Slack DM if real credentials available
+    try:
+        if has_real_slack_creds():
+            post_slack_message(
+                org_id=org_id,
+                thread_id=thread_id,
+                role="manager",
+                recipient="Manager",
+                text=mgr_text,
+                channel_kind="manager",
+                task_id=tid,
+                jira_key=jkey,
+                kind=summary_kind,
+                metadata={"source": source, "recipient_id": "manager:veridian-bot"},
+            )
+    except Exception as exc:
+        logger.debug("notify_manager_employee_update: Slack DM post skipped: %s", exc)
+
+    return msg
+
+
+async def dispatch_stage_2_checkin(
+    org_id: str,
+    thread_id: str,
+    task_id: str,
+    assignee: str,
+    jira_key: str,
+    task_title: str,
+    progress_pct: int = 0,
+    delay_seconds: float = 2.5,
+) -> None:
+    """Send Stage 2 check-in question after employee reply and short delay."""
+    if delay_seconds > 0:
+        await asyncio.sleep(delay_seconds)
+
+    snap = get_thread_snapshot(thread_id)
+    if not snap:
+        return
+    tasks_map = dict(snap.get("tasks") or {})
+    task = dict(tasks_map.get(task_id) or {})
+
+    # Guard: do not send Stage 2 if task is already completed (100% / DONE)
+    if task.get("status") == "DONE" or int(task.get("checkin_stage") or 0) >= 3:
+        logger.info("dispatch_stage_2_checkin: task %s is already DONE/stage 3 — skipping Stage 2.", task_id)
+        return
+
+    clean_title = clean_task_title(task_title or str(task.get("reframed_title") or task.get("title") or task_id))
+    stage2_text = (
+        f"Hi {assignee}, wrapping up for the day — did you finish {clean_title} ({jira_key}), "
+        f"or is anything blocking you? Please share your latest progress % and any commit hashes or PR links."
+    )
+
+    emp_thread_key = canonical_employee_key(assignee)
+    record_slack_feed_message(
+        org_id=org_id,
+        thread_id=thread_id,
+        role="bot",
+        sender="Veridian Bot",
+        recipient=emp_thread_key,
+        text=stage2_text,
+        kind="checkin",
+        task_id=task_id,
+        jira_key=jira_key,
+        metadata={"checkin_stage": 2, "assignee": assignee},
+    )
+
+    task["checkin_stage"] = 2
+    task["awaiting_employee_reply"] = True
+    tasks_map[task_id] = task
+
+    save_thread_snapshot(
+        thread_id=thread_id,
+        org_id=org_id,
+        snapshot={
+            **snap,
+            "tasks": tasks_map,
+            "slack_feed": list_slack_feed(org_id=org_id, thread_id=thread_id),
+        },
+    )
+
+    await sse_manager.push_event(
+        thread_id,
+        "tracker_update",
+        {
+            "source": "stage_2_checkin",
+            "task_id": task_id,
+            "jira_key": jira_key,
+            "progress_pct": progress_pct,
+            "tasks": tasks_map,
+            "slack_feed": list_slack_feed(org_id=org_id, thread_id=thread_id),
+        },
+        org_id=org_id,
+    )
 
 
 async def process_employee_reply(
@@ -486,11 +701,25 @@ async def process_employee_reply(
         task["status"] = "DONE"
         task["jira_status"] = jira_result.get("status", "Done")
         task["progress_pct"] = 100
+        task["checkin_stage"] = 3
+        task["awaiting_employee_reply"] = False
         task["completed_milestones"] = analysis.completed_milestones
         task["blockers"] = "None"
         task["commit_summary"] = commit_summary
         task["completion_evidence"] = evidence
         tasks[task_id] = task
+
+        notify_manager_employee_update(
+            org_id=org_id,
+            thread_id=thread_id,
+            employee_name=assignee,
+            task=task,
+            update_text=reply_text,
+            source="Slack DM" if "slack" in source.lower() else "WorkOS Messages",
+            intent="COMPLETED",
+            progress_pct=100,
+            jira_key=jira_key or task_id,
+        )
 
         for dt in dispatched_list:
             if dt.get("task_id") == task_id:
@@ -594,6 +823,7 @@ async def process_employee_reply(
         task["progress_pct"] = analysis.progress_pct
         task["completed_milestones"] = analysis.completed_milestones
         task["blockers"] = analysis.blockers
+        task["awaiting_employee_reply"] = False
         tasks[task_id] = task
 
         for dt in dispatched_list:
@@ -624,6 +854,33 @@ async def process_employee_reply(
             blockers=analysis.blockers,
             task_title=task_title,
         )
+        notify_manager_employee_update(
+            org_id=org_id,
+            thread_id=thread_id,
+            employee_name=assignee,
+            task=task,
+            update_text=reply_text,
+            source="Slack DM" if "slack" in source.lower() else "WorkOS Messages",
+            intent=analysis.intent,
+            progress_pct=analysis.progress_pct,
+            blockers=analysis.blockers,
+            jira_key=jira_key or task_id,
+        )
+        try:
+            asyncio.create_task(
+                dispatch_stage_2_checkin(
+                    org_id=org_id,
+                    thread_id=thread_id,
+                    task_id=task_id,
+                    assignee=assignee,
+                    jira_key=jira_key or task_id,
+                    task_title=task_title,
+                    progress_pct=analysis.progress_pct,
+                    delay_seconds=2.5,
+                )
+            )
+        except Exception as stage2_exc:
+            logger.debug("dispatch_stage_2_checkin scheduling error: %s", stage2_exc)
         record_slack_feed_message(
             org_id=org_id,
             thread_id=thread_id,

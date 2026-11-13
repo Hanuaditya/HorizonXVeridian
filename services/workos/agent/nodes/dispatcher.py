@@ -129,6 +129,8 @@ def dispatcher_node(state: Any) -> dict:
                 jira_status=jira_res.get("jira_status", "To Do"),
                 slack_dm_sent=slack_ok,
                 progress_pct=0,
+                checkin_stage=0,
+                awaiting_employee_reply=False,
             )
             dispatched.append({
                 "task_id": task_id,
@@ -141,6 +143,8 @@ def dispatcher_node(state: Any) -> dict:
                 "slack_sent": slack_ok,
                 "mode": jira_res["mode"],
                 "progress_pct": 0,
+                "checkin_stage": 0,
+                "awaiting_employee_reply": False,
             })
 
             upsert_slack_thread(

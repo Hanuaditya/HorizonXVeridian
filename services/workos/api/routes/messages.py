@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -18,11 +19,19 @@ from connectors.slack_ops import get_slack_dm_link, has_real_slack_creds, post_s
 from connectors.sprint_loop import (
     _deterministic_analyze_reply,
     build_default_hitl_decisions,
+    dispatch_stage_2_checkin,
     extract_completion_evidence,
+    notify_manager_employee_update,
     process_employee_reply,
     record_slack_feed_message,
     resume_graph_a_and_sync,
     trigger_checkin_for_thread,
+)
+from core.identifiers import (
+    canonical_employee_key,
+    clean_task_title,
+    get_all_manager_keys,
+    is_manager_identity,
 )
 from core.store import (
     get_thread_snapshot,
@@ -90,7 +99,62 @@ def _filter_and_normalize_employees(employees: List[Dict[str, Any]]) -> List[Dic
 
         filtered.append(item)
 
-    return filtered if filtered else employees
+    # Ensure canonical 4 members exist
+    has_catchme = any("catchme" in str(e.get("full_name", "")).lower() for e in filtered)
+    has_resigo = any("resigo" in str(e.get("full_name", "")).lower() for e in filtered)
+    has_hanu = any("hanu" in str(e.get("full_name", "")).lower() for e in filtered)
+    has_arjun = any("arjun" in str(e.get("full_name", "")).lower() for e in filtered)
+
+    if not has_catchme:
+        filtered.append({
+            "id": "emp_catchme_if",
+            "clerk_user_id": "user_demo_catchme",
+            "full_name": "catchme if",
+            "email": "catchme@veridian.io",
+            "role": "Backend Engineer",
+            "status": "ACTIVE",
+            "hr_status": "ACTIVE",
+            "department": "Platform Engineering",
+            "slack_id": "U_CATCHME_IF",
+        })
+    if not has_resigo:
+        filtered.append({
+            "id": "emp_resigo",
+            "clerk_user_id": "user_demo_resigo",
+            "full_name": "Resigo",
+            "email": "resigo@veridian.io",
+            "role": "Frontend Engineer",
+            "status": "ACTIVE",
+            "hr_status": "ACTIVE",
+            "department": "Product & Frontend Engineering",
+            "slack_id": "U_RESIGO",
+        })
+    if not has_hanu:
+        filtered.append({
+            "id": "emp_hanu_aditya",
+            "clerk_user_id": "user_demo_hanu",
+            "full_name": "Hanu Aditya",
+            "email": "hanu@veridian.io",
+            "role": "Engineering Manager",
+            "status": "ACTIVE",
+            "hr_status": "ACTIVE",
+            "department": "Engineering Leadership",
+            "slack_id": "U_HANU_ADITYA",
+        })
+    if not has_arjun:
+        filtered.append({
+            "id": "emp_arjun_rao",
+            "clerk_user_id": "user_demo_arjun",
+            "full_name": "Arjun Rao",
+            "email": "arjun.rao@example.com",
+            "role": "Backend Engineer",
+            "status": "ON_PATERNITY_LEAVE",
+            "hr_status": "ON_PATERNITY_LEAVE",
+            "department": "Platform Engineering",
+            "slack_id": "U_ARJUN_RAO",
+        })
+
+    return filtered
 
 
 class MessageSendRequest(BaseModel):
@@ -104,32 +168,24 @@ _PROCESSED_CLIENT_MSGS: Dict[str, tuple[float, Dict[str, Any]]] = {}
 
 
 def _clean_task_title(title: str) -> str:
-    if not title:
-        return "Sprint Task"
-    t_low = title.lower()
-    if "elastic" in t_low or "staging" in t_low or "cluster" in t_low or "aws" in t_low:
-        return "Deploy Elasticsearch cluster to AWS production"
-    if "oauth" in t_low or "auth" in t_low or "dashboard" in t_low or "login" in t_low:
-        return "Build OAuth login dashboard"
-    if "legacy" in t_low or "v1" in t_low or "payment" in t_low:
-        return "Integrate Legacy v1 Payment API into checkout flow"
-    if "budget" in t_low or "compute" in t_low or "lakh" in t_low or "instance" in t_low:
-        return "Provision enterprise compute cluster instance"
-    clean = re.sub(r"^(?:\[[^\]]+\]\s*)+", "", title).strip()
-    clean = re.sub(r"^(?:oh\s+right[.,\s]*|also[.,\s]*|good\s+morning[.,\s]*|team[.,\s]*)+", "", clean, flags=re.IGNORECASE).strip()
-    return clean or "Sprint Task"
+    return clean_task_title(title)
 
 
 def _find_matching_employee(employees: List[Dict[str, Any]], user_id: str, email: Optional[str]) -> Optional[Dict[str, Any]]:
     uid_clean = (user_id or "").strip().lower()
     em_clean = (email or "").strip().lower()
+    uid_key = canonical_employee_key(user_id) if user_id else ""
 
     for emp in employees:
         ck = str(emp.get("clerk_user_id") or "").strip().lower()
         em = str(emp.get("email") or "").strip().lower()
-        if ck and ck == uid_clean:
+        fn = str(emp.get("full_name") or "")
+        emp_key = canonical_employee_key(fn) if fn else ""
+        if ck and (ck == uid_clean or (uid_key and canonical_employee_key(ck) == uid_key)):
             return emp
         if em and em_clean and em == em_clean:
+            return emp
+        if uid_key and emp_key and uid_key == emp_key:
             return emp
     return None
 
@@ -376,10 +432,27 @@ async def get_channel_messages(
             snap = get_thread_snapshot(thread_id)
             feed = list((snap or {}).get("slack_feed") or [])
 
+        employees_list = _filter_and_normalize_employees(list_employees(auth.org_id))
+        all_mgr_keys = get_all_manager_keys(employees_list)
+        # Normalize all manager keys for comparison
+        all_mgr_keys_low = {k.lower() for k in all_mgr_keys} | {
+            "manager",
+            "hanu_aditya",
+            "hanuma_aditya",
+            "hanu aditya",
+            "hanuma aditya",
+            current_name.lower(),
+            auth.user_id.lower(),
+        }
+
         name_low = current_name.lower()
         email_low = (auth.email or "").lower()
 
+        seen_ids: set = set()
+
         for m in feed:
+            if m.get("id") in seen_ids:
+                continue
             kind = m.get("kind")
             role = m.get("role")
             rcp = str(m.get("recipient") or "")
@@ -388,12 +461,13 @@ async def get_channel_messages(
             if is_manager:
                 # Manager sees governance alerts, review menus, progress digests, blocker escalations, and bot command responses
                 # Exclude individual employee 1-on-1 checkin prompts and assignments
-                if kind in {"checkin", "assignment"} and rcp not in {"Manager", "All"}:
+                if kind in {"checkin", "assignment"} and rcp not in {"Manager", "All"} and rcp.lower() not in all_mgr_keys_low:
                     continue
                 if kind == "employee_reply":
                     # Employee replies are summarized into progress digests or blocker escalations for the manager
                     continue
 
+                rcp_low = rcp.lower()
                 if (
                     role == "manager"
                     or kind in {
@@ -409,11 +483,13 @@ async def get_channel_messages(
                         "manager_command",
                         "bot_command_response",
                     }
-                    or (role == "bot" and rcp in {"Manager", "All", current_name})
-                    or rcp in {"Manager", "All"}
+                    or (role == "bot" and rcp_low in all_mgr_keys_low | {current_name.lower(), "all"})
+                    or rcp_low in all_mgr_keys_low | {"all"}
                     or (m.get("metadata") or {}).get("recipient_id") in {"manager:veridian-bot", auth.user_id}
+                    or (m.get("metadata") or {}).get("type") == "employee_summary"
                 ):
                     messages.append(m)
+                    seen_ids.add(m.get("id"))
             else:
                 # Employee sees ONLY their 1-on-1 check-ins, assignments, and direct bot replies
                 if kind in {
@@ -429,12 +505,18 @@ async def get_channel_messages(
                     continue
                 rcp_low = rcp.lower()
                 snd_low = snd.lower()
+                # Match by canonical key
+                emp_key = canonical_employee_key(current_name) if current_name else ""
+                rcp_key = canonical_employee_key(rcp) if rcp else ""
+                snd_key = canonical_employee_key(snd) if snd else ""
                 if (
-                    (name_low and (name_low in rcp_low or name_low in snd_low))
+                    (emp_key and (emp_key == rcp_key or emp_key == snd_key))
+                    or (name_low and (name_low in rcp_low or name_low in snd_low))
                     or (email_low and email_low in rcp_low)
                     or (rcp_low == "all")
                 ):
                     messages.append(m)
+                    seen_ids.add(m.get("id"))
 
         slack_deep_link = get_slack_dm_link(current_emp.get("slack_id") if current_emp else None)
 
@@ -550,6 +632,8 @@ async def send_channel_message(
                 new_jira_status = task.get("jira_status") or "In Progress"
 
             # 3. Persist ALL 3 records immediately
+            emp_thread_key = canonical_employee_key(current_name)
+
             # Record 1: Outgoing employee message in Employee's veridian-bot thread
             record_slack_feed_message(
                 org_id=auth.org_id,
@@ -570,7 +654,7 @@ async def send_channel_message(
                 thread_id=target_thread_id,
                 role="bot",
                 sender="Veridian Bot",
-                recipient=current_name,
+                recipient=emp_thread_key,
                 text=bot_emp_reply,
                 kind="bot_reply",
                 task_id=target_task_id,
@@ -578,24 +662,17 @@ async def send_channel_message(
             )
 
             # Record 3: Executive Summary Card for Manager
-            summary_kind = "closure" if analysis.intent == "COMPLETED" else ("blocker_escalation" if analysis.intent == "BLOCKED" else "progress_digest")
-            record_slack_feed_message(
+            notify_manager_employee_update(
                 org_id=auth.org_id,
                 thread_id=target_thread_id,
-                role="manager",
-                sender="Veridian Bot",
-                recipient="Manager",
-                text=mgr_summary_text,
-                kind=summary_kind,
-                task_id=target_task_id,
+                employee_name=current_name,
+                task=task,
+                update_text=text_clean,
+                source="WorkOS Messages",
+                intent=analysis.intent,
+                progress_pct=new_progress,
+                blockers=analysis.blockers,
                 jira_key=jira_key,
-                metadata={
-                    "progress_pct": new_progress,
-                    "assignee": current_name,
-                    "task_title": task_title,
-                    "blockers": analysis.blockers,
-                    "recipient_id": "manager:veridian-bot",
-                },
             )
 
             # 4. Update task state in memory & DB
@@ -604,7 +681,28 @@ async def send_channel_message(
             task["jira_status"] = new_jira_status
             task["completed_milestones"] = analysis.completed_milestones
             task["blockers"] = analysis.blockers
+            task["awaiting_employee_reply"] = False
+            if analysis.intent == "COMPLETED":
+                task["checkin_stage"] = 3
             tasks_map[target_task_id] = task
+
+            # Schedule Stage 2 if not completed
+            if analysis.intent != "COMPLETED":
+                try:
+                    asyncio.create_task(
+                        dispatch_stage_2_checkin(
+                            org_id=auth.org_id,
+                            thread_id=target_thread_id,
+                            task_id=target_task_id,
+                            assignee=current_name,
+                            jira_key=jira_key,
+                            task_title=task_title,
+                            progress_pct=new_progress,
+                            delay_seconds=2.5,
+                        )
+                    )
+                except Exception as stage2_exc:
+                    logger.debug("dispatch_stage_2_checkin scheduling error: %s", stage2_exc)
 
             dispatched_list = [dict(d) for d in ((latest_snap or {}).get("dispatched_tickets") or [])]
             for dt in dispatched_list:
