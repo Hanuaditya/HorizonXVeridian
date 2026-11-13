@@ -2,14 +2,28 @@
 
 import { StreamVideo, StreamVideoClient } from '@stream-io/video-react-sdk';
 import { ReactNode, useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import Loader from '@/components/shared/Loader';
 import { isDemoModeEnabled, useAppUser } from '@/providers/AuthBridge';
 
 const apiKey = process.env.NEXT_PUBLIC_STREAM_API_KEY || '';
 const hasRealStreamKey = Boolean(apiKey && !apiKey.includes('placeholder'));
 
+const VIDEO_ROUTES = [
+  '/',
+  '/meetings',
+  '/upcoming',
+  '/previous',
+  '/recordings',
+  '/insights',
+];
+
 export default function StreamClientProvider({ children }: { children: ReactNode }) {
-  const [videoClient, setVideoClient] = useState<StreamVideoClient>();
+  const pathname = usePathname();
+  const isVideoRoute =
+    VIDEO_ROUTES.includes(pathname) || (pathname?.startsWith('/meeting/') ?? false);
+
+  const [videoClient, setVideoClient] = useState<StreamVideoClient | null>(null);
   const { user, isLoaded } = useAppUser();
   const demoMode = isDemoModeEnabled();
 
@@ -21,20 +35,32 @@ export default function StreamClientProvider({ children }: { children: ReactNode
   };
 
   useEffect(() => {
-    if (!isLoaded || !user || !hasRealStreamKey) return;
+    // Completely skip Stream initialization on non-video routes (/messages, /workos, /admin, etc.)
+    if (!isVideoRoute || !isLoaded || !user || !hasRealStreamKey) {
+      return;
+    }
 
-    const client = new StreamVideoClient({
-      apiKey,
-      user: {
-        id: user.id,
-        name: user.username || user.fullName || 'Anonymous',
-        image: user.imageUrl,
-      },
-      tokenProvider,
-    });
+    try {
+      const client = StreamVideoClient.getOrCreateInstance({
+        apiKey,
+        user: {
+          id: user.id,
+          name: user.username || user.fullName || 'Anonymous',
+          image: user.imageUrl,
+        },
+        tokenProvider,
+      });
 
-    setVideoClient(client);
-  }, [user, isLoaded]);
+      setVideoClient(client);
+    } catch (err) {
+      console.warn('StreamVideoClient initialization skipped:', err);
+    }
+  }, [isVideoRoute, user, isLoaded]);
+
+  // Non-video routes: render children directly with zero Stream WebSocket overhead
+  if (!isVideoRoute) {
+    return <>{children}</>;
+  }
 
   // In DEMO_MODE or when Stream keys are unset, render children directly without blocking on Loader
   if (!hasRealStreamKey) {
