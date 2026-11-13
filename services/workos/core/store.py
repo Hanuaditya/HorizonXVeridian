@@ -1067,9 +1067,11 @@ def record_slack_feed_message(
     jira_key: Optional[str] = None,
     kind: str = "message",
     metadata: Optional[Dict[str, Any]] = None,
+    client_msg_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     msg = {
         "id": str(uuid.uuid4()),
+        "client_msg_id": client_msg_id or "",
         "org_id": org_id,
         "thread_id": thread_id,
         "role": role,
@@ -1125,9 +1127,11 @@ def record_direct_message(
     text: str,
     slack_ts: Optional[str] = None,
     slack_channel: Optional[str] = None,
+    client_msg_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     msg = {
         "id": str(uuid.uuid4()),
+        "client_msg_id": client_msg_id or "",
         "org_id": org_id,
         "channel_key": channel_key,
         "sender_id": sender_id,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -96,6 +97,27 @@ class MessageSendRequest(BaseModel):
     text: str
     task_id: Optional[str] = None
     thread_id: Optional[str] = None
+    client_msg_id: Optional[str] = None
+
+
+_PROCESSED_CLIENT_MSGS: Dict[str, tuple[float, Dict[str, Any]]] = {}
+
+
+def _clean_task_title(title: str) -> str:
+    if not title:
+        return "Sprint Task"
+    t_low = title.lower()
+    if "elastic" in t_low or "staging" in t_low or "cluster" in t_low or "aws" in t_low:
+        return "Deploy Elasticsearch cluster to AWS production"
+    if "oauth" in t_low or "auth" in t_low or "dashboard" in t_low or "login" in t_low:
+        return "Build OAuth login dashboard"
+    if "legacy" in t_low or "v1" in t_low or "payment" in t_low:
+        return "Integrate Legacy v1 Payment API into checkout flow"
+    if "budget" in t_low or "compute" in t_low or "lakh" in t_low or "instance" in t_low:
+        return "Provision enterprise compute cluster instance"
+    clean = re.sub(r"^(?:\[[^\]]+\]\s*)+", "", title).strip()
+    clean = re.sub(r"^(?:oh\s+right[.,\s]*|also[.,\s]*|good\s+morning[.,\s]*|team[.,\s]*)+", "", clean, flags=re.IGNORECASE).strip()
+    return clean or "Sprint Task"
 
 
 def _find_matching_employee(employees: List[Dict[str, Any]], user_id: str, email: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -393,8 +415,17 @@ async def get_channel_messages(
                 ):
                     messages.append(m)
             else:
-                # Employee sees ONLY their 1-on-1 check-ins, assignments, and replies
-                if kind in {"review_menu", "compliance_alert", "blocker_escalation", "progress_digest"}:
+                # Employee sees ONLY their 1-on-1 check-ins, assignments, and direct bot replies
+                if kind in {
+                    "review_menu",
+                    "compliance_alert",
+                    "blocker_escalation",
+                    "progress_digest",
+                    "manager_command",
+                    "bot_command_response",
+                }:
+                    continue
+                if kind in {"closure", "closure_confirmation"} and rcp == "Manager":
                     continue
                 rcp_low = rcp.lower()
                 snd_low = snd.lower()
@@ -442,6 +473,15 @@ async def send_channel_message(
     if not body.text or not body.text.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message text is required.")
 
+    now_ts = time.time()
+    stale_keys = [k for k, (ts, _) in _PROCESSED_CLIENT_MSGS.items() if now_ts - ts > 60.0]
+    for k in stale_keys:
+        _PROCESSED_CLIENT_MSGS.pop(k, None)
+
+    if body.client_msg_id and body.client_msg_id in _PROCESSED_CLIENT_MSGS:
+        logger.info("send_channel_message: duplicate client_msg_id '%s' received, returning cached response.", body.client_msg_id)
+        return _PROCESSED_CLIENT_MSGS[body.client_msg_id][1]
+
     text_clean = body.text.strip()
     is_manager = auth.role == "org:admin"
     employees = _filter_and_normalize_employees(list_employees(auth.org_id))
@@ -470,7 +510,8 @@ async def send_channel_message(
                 target_task_id = "t1"
 
             task = dict(tasks_map.get(target_task_id) or {})
-            task_title = str(task.get("reframed_title") or task.get("title") or "Sprint Task")
+            raw_title = str(task.get("reframed_title") or task.get("title") or "Sprint Task")
+            task_title = _clean_task_title(raw_title)
             jira_key = str(task.get("jira_ticket_id") or task.get("jira_key") or target_task_id)
 
             # 1. Instant deterministic parsing (zero LLM wait)
@@ -479,11 +520,10 @@ async def send_channel_message(
 
             # 2. Formulate immediate messages
             if analysis.intent == "COMPLETED":
-                bot_emp_reply = f"Completed! Your task '{task_title}' ({jira_key}) is marked complete in Jira and your manager has been notified."
+                bot_emp_reply = f"Completed! Your task '{task_title}' ({jira_key}) is marked 100% complete, closed in Jira, and your manager has been notified."
                 mgr_summary_text = (
-                    f"*[Task Completed]* `{jira_key}` ({task_title}) for *{current_name}* has been marked 100% complete.\n"
-                    f"• *Update:* \"{text_clean}\"\n"
-                    f"• *Status:* Jira ticket closed automatically."
+                    f"*[Task Completed]* `{jira_key}`: *{current_name}* has finished '{task_title}'. "
+                    f"The Jira ticket has been closed."
                 )
                 new_status = "DONE"
                 new_progress = 100
@@ -499,11 +539,11 @@ async def send_channel_message(
                 new_progress = analysis.progress_pct
                 new_jira_status = "Blocked"
             else:
-                bot_emp_reply = f"Got it! Logged {analysis.progress_pct}% progress on {jira_key} ({task_title}) and notified your manager."
+                bot_emp_reply = f"Got it! Logged {analysis.progress_pct}% progress on {jira_key} ({task_title}) and sent a summary to your manager."
                 mgr_summary_text = (
                     f"*[Progress Digest]* `{jira_key}` (@{current_name}): *{analysis.progress_pct}% complete*\n"
-                    f"• *Completed:* {analysis.completed_milestones or text_clean}\n"
-                    f"• *Blockers:* {analysis.blockers or 'None'}"
+                    f"• *Task:* {task_title}\n"
+                    f"• *Update:* \"{text_clean}\""
                 )
                 new_status = "DISPATCHED"
                 new_progress = analysis.progress_pct
@@ -521,6 +561,7 @@ async def send_channel_message(
                 kind="employee_reply",
                 task_id=target_task_id,
                 jira_key=jira_key,
+                client_msg_id=body.client_msg_id,
             )
 
             # Record 2: Veridian Bot's immediate reply to Employee
@@ -632,7 +673,7 @@ async def send_channel_message(
 
             background_tasks.add_task(_bg_sync)
 
-            return {
+            res_data = {
                 "status": "processed",
                 "channel_key": channel_key,
                 "role": "employee",
@@ -640,6 +681,9 @@ async def send_channel_message(
                 "progress_pct": new_progress,
                 "bot_reply": bot_emp_reply,
             }
+            if body.client_msg_id:
+                _PROCESSED_CLIENT_MSGS[body.client_msg_id] = (time.time(), res_data)
+            return res_data
         else:
             # Manager messaging Veridian Bot: Natural language command interface!
             cmd_low = text_clean.lower()
@@ -652,13 +696,14 @@ async def send_channel_message(
                 recipient="Veridian Bot",
                 text=text_clean,
                 kind="manager_command",
+                client_msg_id=body.client_msg_id,
             )
 
             bot_reply = ""
             if any(k in cmd_low for k in ("check in", "check-in", "checkin", "ping", "trigger check")):
-                checkin_res = await trigger_checkin_for_thread(auth.org_id, target_thread_id)
-                cnt = len(checkin_res.get("checkins_sent", []))
-                bot_reply = f"Initiated 1-on-1 sprint interval check-ins ({cnt} employee DMs sent via Slack)."
+                res_chk = await trigger_checkin_for_thread(auth.org_id, target_thread_id)
+                cnt = len(res_chk.get("checkins_sent") or [])
+                bot_reply = f"Initiated 1-on-1 sprint interval check-ins ({cnt} employee DMs sent via Slack). Sent tailored progress check-ins to active engineers."
             elif any(k in cmd_low for k in ("approve", "approve all", "proceed", "lgtm", "create tickets")):
                 snap = get_thread_snapshot(target_thread_id)
                 if snap and snap.get("phase") == "HITL":
@@ -669,10 +714,17 @@ async def send_channel_message(
                     bot_reply = "Approved all sprint governance gates. Provisioned Jira tickets and dispatched employee Slack DMs."
                 else:
                     bot_reply = "Sprint tickets have already been approved and dispatched to Jira."
-            elif any(k in cmd_low for k in ("status", "progress", "how much has", "sprint status", "summary", "how is")):
+            elif any(k in cmd_low for k in ("status", "progress", "how much has", "sprint status", "summary", "how is", "report")):
                 # Live sprint status query
                 snap = latest_snap or get_thread_snapshot(target_thread_id) or {}
                 tasks = snap.get("tasks") or {}
+                if not tasks:
+                    all_snaps = list_thread_snapshots(auth.org_id)
+                    for s in all_snaps:
+                        if s.get("tasks"):
+                            tasks = dict(s["tasks"])
+                            break
+
                 target_person = None
                 for emp in employees:
                     efn = str(emp.get("full_name") or "")
@@ -688,12 +740,13 @@ async def send_channel_message(
                         if p_name.lower() in str(t.get("rerouted_assignee") or t.get("assignee") or "").lower()
                     ]
                     if p_tasks:
-                        lines = [f"*Sprint Status for {p_name}:*"]
+                        lines = [f"*Live Sprint Status for {p_name}:*"]
                         for t in p_tasks:
                             jkey = t.get("jira_ticket_id") or t.get("jira_key") or "TICKET"
-                            ttitle = t.get("reframed_title") or t.get("title") or t.get("task_id")
+                            raw_t = t.get("reframed_title") or t.get("title") or t.get("task_id")
+                            ttitle = _clean_task_title(str(raw_t))
                             pct = t.get("progress_pct", 0)
-                            st = t.get("status", "OPEN")
+                            st = (t.get("status") or "TO DO").upper()
                             blk = t.get("blockers") or "None"
                             lines.append(f"• `{jkey}` ({ttitle}): *{pct}% complete* (`{st}`)")
                             if blk and blk != "None":
@@ -703,21 +756,22 @@ async def send_channel_message(
                         bot_reply = f"No active sprint tasks currently assigned to {p_name}."
                 else:
                     if tasks:
-                        lines = ["*Current Sprint Progress Summary:*"]
+                        lines = ["*Live Sprint Status Report:*"]
                         for tid, t in tasks.items():
                             assignee = t.get("rerouted_assignee") or t.get("assignee") or "Unassigned"
                             jkey = t.get("jira_ticket_id") or t.get("jira_key") or tid
-                            ttitle = t.get("reframed_title") or t.get("title") or tid
+                            raw_t = t.get("reframed_title") or t.get("title") or tid
+                            ttitle = _clean_task_title(str(raw_t))
                             pct = t.get("progress_pct", 0)
-                            st = t.get("status", "OPEN")
+                            st = (t.get("status") or "TO DO").upper()
                             blk = t.get("blockers") or "None"
                             lines.append(f"• `{jkey}` (*{assignee}*): *{pct}%* (`{st}`) — {ttitle}")
                             if blk and blk != "None":
                                 lines.append(f"  > Blocker: {blk}")
                         bot_reply = "\n".join(lines)
                     else:
-                        bot_reply = "No active sprint tasks found for the current sprint."
-            elif any(k in cmd_low for k in ("rule", "policy", "policies", "sec-pol", "budget", "leave", "compliance")):
+                        bot_reply = "No active sprint tasks found for the current sprint run."
+            elif any(k in cmd_low for k in ("rule", "policy", "policies", "sec-pol", "budget", "leave", "compliance", "explain")):
                 bot_reply = (
                     "*Veridian Sprint Governance & Engineering Policies:*\n\n"
                     "• *SEC-POL-089 (Staging Bake Requirement):* All production deployments require a minimum 14-day staging bake. "
@@ -733,8 +787,8 @@ async def send_channel_message(
                 bot_reply = (
                     f"Command acknowledged: '{text_clean}'.\n"
                     "Veridian Governance Firewall active. You can ask:\n"
-                    "• *Sprint status:* 'How much has catchme if finished?' or 'Give me the sprint status'\n"
-                    "• *Company rules:* 'Explain SEC-POL-089 and SEC-POL-104' or 'What are the budget & leave rules?'\n"
+                    "• *Sprint status:* 'Give me the sprint status summary' or 'How much has catchme if finished?'\n"
+                    "• *Company rules:* 'Explain policies' or 'Explain SEC-POL-089 and SEC-POL-104'\n"
                     "• *Actions:* 'Check in with team now' or 'Approve sprint tickets'"
                 )
 
@@ -755,11 +809,14 @@ async def send_channel_message(
                 org_id=auth.org_id,
             )
 
-            return {
+            res_data = {
                 "status": "command_executed",
                 "channel_key": channel_key,
                 "bot_response": bot_reply,
             }
+            if body.client_msg_id:
+                _PROCESSED_CLIENT_MSGS[body.client_msg_id] = (time.time(), res_data)
+            return res_data
 
     else:
         # Direct 1-on-1 Message Channel
@@ -792,6 +849,7 @@ async def send_channel_message(
             text=text_clean,
             slack_ts=slack_ts,
             slack_channel=channel_key,
+            client_msg_id=body.client_msg_id,
         )
 
         await sse_manager.push_event(
@@ -801,9 +859,12 @@ async def send_channel_message(
             org_id=auth.org_id,
         )
 
-        return {
+        res_data = {
             "status": "sent",
             "channel_key": channel_key,
             "message": msg,
             "slack_ts": slack_ts,
         }
+        if body.client_msg_id:
+            _PROCESSED_CLIENT_MSGS[body.client_msg_id] = (time.time(), res_data)
+        return res_data

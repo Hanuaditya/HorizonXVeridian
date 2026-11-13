@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 
 interface MessageItem {
   id: string;
+  client_msg_id?: string;
   sender?: string;
   sender_id?: string;
   recipient?: string;
@@ -440,6 +441,10 @@ function MessagesWorkspace() {
   const [showRightDrawer, setShowRightDrawer] = useState<boolean>(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const pendingMessagesRef = useRef<Map<string, MessageItem>>(new Map());
+  const isSendingRef = useRef<boolean>(false);
+  const inFlightRef = useRef<boolean>(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // SSE Stream for live event push
   const { refreshState } = useAgentStream(activeThreadId);
@@ -469,32 +474,77 @@ function MessagesWorkspace() {
     return () => clearInterval(interval);
   }, [loadThreads]);
 
-  // 2. Load messages for active channel (silent polling support)
+  // 2. Load messages for active channel with optimistic preservation & AbortController guard
   const loadChannelMessages = useCallback(async (chKey: string, silent: boolean = false) => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+
     if (!silent) {
       setLoadingMessages(true);
     }
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     try {
       const qs = activeThreadId ? `?thread_id=${encodeURIComponent(activeThreadId)}` : '';
-      const res = await fetch(`/api/workos/messages/${encodeURIComponent(chKey)}${qs}`);
+      const res = await fetch(`/api/workos/messages/${encodeURIComponent(chKey)}${qs}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
       if (res.ok) {
         const data = await res.json();
         const incoming: MessageItem[] = data.messages || [];
+
+        // Reconcile incoming server messages with pending optimistic messages
+        for (const inc of incoming) {
+          if (inc.client_msg_id && pendingMessagesRef.current.has(inc.client_msg_id)) {
+            pendingMessagesRef.current.delete(inc.client_msg_id);
+          }
+          for (const [pId, pMsg] of pendingMessagesRef.current.entries()) {
+            if (pMsg.text.trim() === inc.text.trim()) {
+              pendingMessagesRef.current.delete(pId);
+            }
+          }
+        }
+
+        // Merge any unconfirmed pending optimistic messages at the end so they NEVER disappear
+        const unconfirmedPending = Array.from(pendingMessagesRef.current.values());
+        const combined = [...incoming, ...unconfirmedPending];
+
+        // Deduplicate messages by client_msg_id or id or timestamp+text
+        const seen = new Set<string>();
+        const deduped: MessageItem[] = [];
+        for (const m of combined) {
+          const key = m.client_msg_id || m.id || `${m.created_at}-${m.text.slice(0, 32)}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            deduped.push(m);
+          }
+        }
+
         setMessages((prev) => {
-          // If message counts and last IDs match, avoid full re-render
           if (
-            prev.length === incoming.length &&
+            prev.length === deduped.length &&
             prev.length > 0 &&
-            prev[prev.length - 1]?.id === incoming[incoming.length - 1]?.id
+            (prev[prev.length - 1]?.client_msg_id || prev[prev.length - 1]?.id) ===
+              (deduped[deduped.length - 1]?.client_msg_id || deduped[deduped.length - 1]?.id)
           ) {
             return prev;
           }
-          return incoming;
+          return deduped;
         });
       }
     } catch {
-      // Offline tolerance
+      // Offline / aborted tolerance
     } finally {
+      clearTimeout(timeoutId);
+      inFlightRef.current = false;
       if (!silent) {
         setLoadingMessages(false);
       }
@@ -502,6 +552,7 @@ function MessagesWorkspace() {
   }, [activeThreadId]);
 
   useEffect(() => {
+    pendingMessagesRef.current.clear();
     if (activeChannelKey) {
       loadChannelMessages(activeChannelKey, false);
       const interval = setInterval(() => {
@@ -588,26 +639,32 @@ function MessagesWorkspace() {
     return anyWithTicket?.active_ticket || null;
   }, [threads, activeThread, currentUserName, currentUserEmail, currentUserId, isAdmin]);
 
-  // Handle Send Message with Instant Optimistic UI Update (<10ms)
+  // Handle Send Message with Instant Optimistic UI Update (<10ms) & Double-Submit Guard
   const handleSendMessage = async (customText?: string) => {
+    if (isSendingRef.current) return;
     const textToSend = (customText ?? inputText).trim();
-    if (!textToSend || sending) return;
+    if (!textToSend) return;
 
-    // Instant optimistic update
+    isSendingRef.current = true;
+    setSending(true);
+
+    const clientMsgId = `cmsg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const optimisticMsg: MessageItem = {
-      id: `temp-${Date.now()}`,
+      id: clientMsgId,
+      client_msg_id: clientMsgId,
       sender: user?.fullName || user?.username || (isAdmin ? 'Manager' : 'You'),
       sender_id: userId || 'temp-id',
       role: isAdmin ? 'manager' : 'user',
       text: textToSend,
       created_at: new Date().toISOString(),
     };
+
+    pendingMessagesRef.current.set(clientMsgId, optimisticMsg);
     setMessages((prev) => [...prev, optimisticMsg]);
 
     if (!customText) {
       setInputText('');
     }
-    setSending(true);
 
     try {
       const res = await fetch(`/api/workos/messages/${encodeURIComponent(activeChannelKey)}`, {
@@ -617,18 +674,20 @@ function MessagesWorkspace() {
           text: textToSend,
           thread_id: activeThreadId,
           task_id: activeThread?.active_ticket?.task_id,
+          client_msg_id: clientMsgId,
         }),
       });
 
-      // Reset sending immediately when fast API responds (<300ms)
-      setSending(false);
-
       if (res.ok) {
+        pendingMessagesRef.current.delete(clientMsgId);
         loadChannelMessages(activeChannelKey, true);
         refreshState();
         loadThreads();
       }
     } catch {
+      // Offline tolerance
+    } finally {
+      isSendingRef.current = false;
       setSending(false);
     }
   };

@@ -29,18 +29,25 @@ class HITLResumeResponse(BaseModel):
     message: str
 
 
+_APPROVAL_IN_PROGRESS: set[str] = set()
+
+
 async def _resume_graph_a_background(
     thread_id: str,
     org_id: str,
     approver_user_id: str,
     hitl_decisions: Dict[str, str],
 ) -> None:
-    await resume_graph_a_and_sync(
-        thread_id=thread_id,
-        org_id=org_id,
-        approver_user_id=approver_user_id,
-        hitl_decisions=hitl_decisions,
-    )
+    _APPROVAL_IN_PROGRESS.add(thread_id)
+    try:
+        await resume_graph_a_and_sync(
+            thread_id=thread_id,
+            org_id=org_id,
+            approver_user_id=approver_user_id,
+            hitl_decisions=hitl_decisions,
+        )
+    finally:
+        _APPROVAL_IN_PROGRESS.discard(thread_id)
 
 
 @router.post("/hitl-resume", response_model=HITLResumeResponse)
@@ -61,6 +68,16 @@ async def hitl_resume(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Thread does not belong to the authenticated organization.",
+        )
+
+    # Guard: prevent duplicate ticket creation if already approved or approval is in progress
+    if snap and (snap.get("manager_approved") or snap.get("phase") in ("COMPLETE", "ACTIVE_SPRINT") or body.thread_id in _APPROVAL_IN_PROGRESS):
+        logger.info("hitl_resume: thread '%s' already approved or in progress -> skipping duplicate dispatch.", body.thread_id)
+        return HITLResumeResponse(
+            status="already_approved",
+            thread_id=body.thread_id,
+            approved_by=auth.user_id,
+            message="Sprint tickets have already been approved and dispatched.",
         )
 
     meeting_id = (snap or {}).get("meeting_id") or body.thread_id

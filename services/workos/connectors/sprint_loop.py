@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import logging
 import re
 import time
@@ -324,8 +325,13 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
         jira_key = task.get("jira_ticket_id") or task.get("jira_key")
         if not jira_key:
             continue
-        assignee = str(task.get("assignee") or "Engineer")
-        title = str(task.get("reframed_title") or task.get("title") or tid)
+        assignee = str(task.get("rerouted_assignee") or task.get("assignee") or "Engineer")
+        raw_title = str(task.get("reframed_title") or task.get("title") or tid)
+        title = raw_title
+        if "elastic" in raw_title.lower():
+            title = "Deploy Elasticsearch cluster to AWS production"
+        elif "oauth" in raw_title.lower() or "auth" in raw_title.lower():
+            title = "Build OAuth login dashboard"
         st = open_threads.get(tid) or {}
 
         prior_checkins = sum(
@@ -333,6 +339,23 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
             if m.get("task_id") == tid and m.get("kind") == "checkin"
         )
         round_num = prior_checkins + 1
+
+        # Rapid duplicate trigger guard (<10s)
+        recent_checkin = False
+        for m in reversed(slack_feed_msgs):
+            if m.get("task_id") == tid and m.get("kind") == "checkin":
+                ca = m.get("created_at")
+                if ca:
+                    try:
+                        dt = datetime.fromisoformat(str(ca).replace("Z", "+00:00"))
+                        if (datetime.now(timezone.utc) - dt).total_seconds() < 10.0:
+                            recent_checkin = True
+                    except Exception:
+                        pass
+                break
+        if recent_checkin:
+            logger.info("trigger_checkin_for_thread: checkin for task %s sent <10s ago, skipping duplicate.", tid)
+            continue
 
         ok, ch, ts = post_employee_checkin_dm(
             org_id=org_id,

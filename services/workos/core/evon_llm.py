@@ -405,6 +405,8 @@ def demo_extract_from_transcript(transcript_text: str) -> Dict[str, Any]:
 
     idx = 1
     has_seen_budget = False
+    seen_assignee_topics: set[tuple[str, str]] = set()
+
     for speaker, utterance, clean in raw_turns:
         utt_low = utterance.lower()
 
@@ -414,6 +416,24 @@ def demo_extract_from_transcript(transcript_text: str) -> Dict[str, Any]:
                 "decision": utterance[:140],
                 "context_quote": clean[:180],
             })
+
+        # Filter out opening greetings, standalone meeting announcements, and conversational acknowledgments
+        is_greeting = any(
+            g in utt_low
+            for g in (
+                "good morning", "quick sprint standup", "sprint standup today",
+                "welcome everyone", "welcome team", "quick standup", "standup call"
+            )
+        )
+        is_acknowledgment = any(
+            ack in utt_low
+            for ack in (
+                "starting on the", "right away", "looking into it", "will get right on it",
+                "on it right now", "sure thing", "sounds good", "thanks everyone"
+            )
+        )
+        if is_greeting or is_acknowledgment:
+            continue
 
         has_action = any(
             kw in utt_low
@@ -488,6 +508,12 @@ def demo_extract_from_transcript(transcript_text: str) -> Dict[str, Any]:
         task_title = re.sub(r"^(?:can you\s+|please\s+)?(?:take that over and\s+)?", "", task_title, flags=re.IGNORECASE).strip()
         if task_title:
             task_title = task_title[0].upper() + task_title[1:]
+
+        # Deduplication check: at most 1 task per engineer and topic
+        dedup_key = (assigned_person.lower(), task_title.lower())
+        if dedup_key in seen_assignee_topics:
+            continue
+        seen_assignee_topics.add(dedup_key)
 
         commit_msg = f"feat({res_type.lower().replace('_', '-')[:12]}): {task_title[:50].lower()}"
 
