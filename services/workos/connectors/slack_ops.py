@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -134,6 +135,40 @@ def open_slack_dm_channel(client: Any, slack_user_id: str) -> Optional[str]:
     except Exception as exc:
         logger.warning("Slack conversations_open(%s) failed: %s", slack_user_id, exc)
     return None
+
+
+def send_direct_slack_dm(slack_user_id: str, text: str) -> Optional[str]:
+    """Send a direct 1-on-1 Slack message to a user via conversations.open."""
+    settings = get_settings()
+    if not has_real_slack_creds() or settings.demo_mode or not slack_user_id:
+        return f"demo_dm_ts_{int(time.time())}"
+    try:
+        from slack_sdk import WebClient
+
+        client = WebClient(token=settings.slack_bot_token)
+        dm_ch = open_slack_dm_channel(client, slack_user_id)
+        if not dm_ch:
+            return None
+        res = client.chat_postMessage(channel=dm_ch, text=text)
+        return str(res.get("ts") or "")
+    except Exception as exc:
+        logger.warning("send_direct_slack_dm(%s) failed: %s", slack_user_id, exc)
+        return None
+
+
+def get_slack_dm_link(slack_user_id: Optional[str] = None) -> str:
+    """Generate Slack deep link URL for a user or channel."""
+    team_id = os.getenv("SLACK_TEAM_ID", "").strip()
+    if not slack_user_id:
+        return f"https://app.slack.com/client/{team_id}" if team_id else "https://app.slack.com/client"
+    dm_ch = _DM_CHANNEL_CACHE.get(slack_user_id)
+    if team_id and dm_ch:
+        return f"https://app.slack.com/client/{team_id}/{dm_ch}"
+    if dm_ch:
+        return f"https://app.slack.com/client/{dm_ch}"
+    if team_id and slack_user_id:
+        return f"https://app.slack.com/client/{team_id}/{slack_user_id}"
+    return "https://app.slack.com/client"
 
 
 def resolve_live_slack_channel(client: Any, preferred_channel: str) -> str:

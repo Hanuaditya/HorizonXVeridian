@@ -62,6 +62,8 @@ class LocalDemoStore:
             self.audit_trail: List[Dict[str, Any]] = []
             self.slack_threads: List[Dict[str, Any]] = []
             self.slack_feed: List[Dict[str, Any]] = []
+            self.direct_messages: List[Dict[str, Any]] = []
+            self.channel_read_markers: Dict[str, Dict[str, str]] = {}
             self.webhook_events: set[tuple[str, str]] = set()
             self.thread_states: Dict[str, Dict[str, Any]] = {}
             self._seeded = False
@@ -1099,6 +1101,126 @@ def list_slack_feed(org_id: str, thread_id: str) -> List[Dict[str, Any]]:
             for m in _local_store.slack_feed
             if m.get("org_id") == org_id and m.get("thread_id") == thread_id
         ]
+
+
+def list_slack_feed_for_org(org_id: str) -> List[Dict[str, Any]]:
+    with _local_store._lock:
+        return [
+            dict(m)
+            for m in _local_store.slack_feed
+            if m.get("org_id") == org_id
+        ]
+
+
+def record_direct_message(
+    org_id: str,
+    channel_key: str,
+    sender_id: str,
+    sender_name: str,
+    recipient_id: str,
+    recipient_name: str,
+    text: str,
+    slack_ts: Optional[str] = None,
+    slack_channel: Optional[str] = None,
+) -> Dict[str, Any]:
+    msg = {
+        "id": str(uuid.uuid4()),
+        "org_id": org_id,
+        "channel_key": channel_key,
+        "sender_id": sender_id,
+        "sender": sender_name,
+        "recipient_id": recipient_id,
+        "recipient": recipient_name,
+        "text": text,
+        "slack_ts": slack_ts or "",
+        "slack_channel": slack_channel or "",
+        "role": "direct",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with _local_store._lock:
+        if not hasattr(_local_store, "direct_messages"):
+            _local_store.direct_messages = []
+        _local_store.direct_messages.append(msg)
+    return msg
+
+
+def list_direct_messages(org_id: str, channel_key: str) -> List[Dict[str, Any]]:
+    with _local_store._lock:
+        if not hasattr(_local_store, "direct_messages"):
+            _local_store.direct_messages = []
+        return [
+            dict(m)
+            for m in _local_store.direct_messages
+            if m.get("org_id") == org_id and m.get("channel_key") == channel_key
+        ]
+
+
+def mark_channel_read(org_id: str, user_id: str, channel_key: str) -> None:
+    with _local_store._lock:
+        if not hasattr(_local_store, "channel_read_markers"):
+            _local_store.channel_read_markers = {}
+        user_key = f"{org_id}:{user_id}"
+        marker = _local_store.channel_read_markers.setdefault(user_key, {})
+        marker[channel_key] = datetime.now(timezone.utc).isoformat()
+
+
+def get_unread_message_counts(
+    org_id: str,
+    user_id: str,
+    is_manager: bool,
+    user_name: Optional[str] = None,
+    user_email: Optional[str] = None,
+) -> Dict[str, Any]:
+    with _local_store._lock:
+        if not hasattr(_local_store, "channel_read_markers"):
+            _local_store.channel_read_markers = {}
+        if not hasattr(_local_store, "direct_messages"):
+            _local_store.direct_messages = []
+
+        user_key = f"{org_id}:{user_id}"
+        markers = _local_store.channel_read_markers.get(user_key, {})
+
+        by_channel: Dict[str, int] = {}
+
+        bot_last_read = markers.get("veridian-bot", "1970-01-01T00:00:00Z")
+        bot_unread = 0
+        name_clean = (user_name or "").lower()
+        email_clean = (user_email or "").lower()
+
+        for m in _local_store.slack_feed:
+            if m.get("org_id") != org_id:
+                continue
+            ts = m.get("created_at") or ""
+            if ts <= bot_last_read:
+                continue
+            if is_manager:
+                if (
+                    m.get("role") == "manager"
+                    or m.get("recipient") == "Manager"
+                    or m.get("kind") in {"alert", "review_menu", "progress_digest", "closure_confirmation"}
+                ):
+                    bot_unread += 1
+            else:
+                rcp = (m.get("recipient") or "").lower()
+                snd = (m.get("sender") or "").lower()
+                if (name_clean and (name_clean in rcp or name_clean in snd)) or (email_clean and email_clean in rcp):
+                    bot_unread += 1
+        if bot_unread > 0:
+            by_channel["veridian-bot"] = bot_unread
+
+        for dm in _local_store.direct_messages:
+            if dm.get("org_id") != org_id:
+                continue
+            rec_id = dm.get("recipient_id") or ""
+            rec_name = (dm.get("recipient") or "").lower()
+            if rec_id == user_id or (name_clean and name_clean in rec_name):
+                ch = dm.get("channel_key") or "direct"
+                ch_read = markers.get(ch, "1970-01-01T00:00:00Z")
+                if (dm.get("created_at") or "") > ch_read:
+                    by_channel[ch] = by_channel.get(ch, 0) + 1
+
+        total = sum(by_channel.values())
+        return {"unread_total": total, "by_channel": by_channel}
 
 
 def list_open_slack_threads_all() -> List[Dict[str, Any]]:

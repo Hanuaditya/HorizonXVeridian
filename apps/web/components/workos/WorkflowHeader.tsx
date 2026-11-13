@@ -1,118 +1,165 @@
 'use client';
 
 import React from 'react';
-import type { StepItem } from '@/lib/sse';
 import type { WorkOSPhase } from '@/lib/workos-types';
+import {
+  Check,
+  ChevronRight,
+  Clock,
+  Layers,
+  Play,
+  RotateCcw,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface WorkflowHeaderProps {
   phase: WorkOSPhase;
   meetingId?: string | null;
   threadId?: string | null;
-  steps: StepItem[];
-  simulating?: boolean;
-  splitView?: boolean;
-  onToggleSplitView?: () => void;
-  onRunSimulation?: () => void;
+  onOpenIngestModal: () => void;
   onReset?: () => void;
+  isManager: boolean;
 }
-
-const PHASE_BADGE: Record<WorkOSPhase, { label: string; cls: string }> = {
-  IDLE: { label: 'Ready', cls: 'bg-white/10 text-white/70 border-white/15' },
-  INGESTING: { label: 'Ingesting Transcript', cls: 'bg-blue-500/20 text-blue-300 border-blue-400/30' },
-  EXTRACTING: { label: 'Evon 30B Extracting', cls: 'bg-purple-500/20 text-purple-300 border-purple-400/30' },
-  FIREWALL: { label: '4-Way Firewall Active', cls: 'bg-purple-500/20 text-purple-300 border-purple-400/30' },
-  RESOLVING: { label: 'Generating Fixes', cls: 'bg-purple-500/20 text-purple-300 border-purple-400/30' },
-  HITL: { label: 'Awaiting Manager HITL', cls: 'bg-amber-500/20 text-amber-300 border-amber-400/40' },
-  DISPATCHING: { label: 'Dispatching Jira + Slack', cls: 'bg-blue-500/20 text-blue-300 border-blue-400/30' },
-  COMPLETE: { label: 'Dispatched & Synced', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30' },
-  ERROR: { label: 'Pipeline Error', cls: 'bg-red-500/20 text-red-300 border-red-400/30' },
-};
 
 export default function WorkflowHeader({
   phase,
   meetingId,
   threadId,
-  steps,
-  simulating = false,
-  splitView = true,
-  onToggleSplitView,
-  onRunSimulation,
+  onOpenIngestModal,
   onReset,
+  isManager,
 }: WorkflowHeaderProps) {
-  const badge = PHASE_BADGE[phase] ?? PHASE_BADGE.IDLE;
+  // 4-Step Lifecycle Indicator
+  const steps = [
+    {
+      id: 1,
+      label: 'Transcribe',
+      sub: 'Gnani Prisma',
+      isComplete: phase !== 'IDLE' && phase !== 'ERROR',
+      isActive: phase === 'INGESTING' || phase === 'EXTRACTING',
+    },
+    {
+      id: 2,
+      label: 'Policy Audit',
+      sub: '4-Way Firewall',
+      isComplete: ['RESOLVING', 'HITL', 'DISPATCHING', 'COMPLETE'].includes(phase),
+      isActive: phase === 'FIREWALL' || phase === 'RESOLVING',
+    },
+    {
+      id: 3,
+      label: 'Manager Gate',
+      sub: 'Zero-Ticket Rule',
+      isComplete: ['DISPATCHING', 'COMPLETE'].includes(phase),
+      isActive: phase === 'HITL',
+    },
+    {
+      id: 4,
+      label: 'Active Sprint',
+      sub: 'Jira + Slack Loop',
+      isComplete: phase === 'COMPLETE',
+      isActive: phase === 'DISPATCHING' || phase === 'COMPLETE',
+    },
+  ];
 
   return (
-    <div className="rounded-xl border border-white/10 bg-dark-1 p-5 text-white shadow-lg">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="rounded-2xl border border-white/[0.08] bg-[#121417] p-5 text-white shadow-xl">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-blue-600 font-bold text-white shadow">
-            W
+          <div className="flex size-10 items-center justify-center rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30">
+            <ShieldCheck className="size-5" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-bold tracking-tight">Gnani × Veridian Work Hub</h1>
-              <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badge.cls}`}>
-                {badge.label}
+              <h1 className="text-lg font-bold tracking-tight text-white">
+                Sprint Governance & Execution
+              </h1>
+              <span
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide border',
+                  phase === 'COMPLETE'
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                    : phase === 'HITL'
+                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                    : phase === 'IDLE'
+                    ? 'bg-white/[0.06] text-white/60 border-white/[0.08]'
+                    : 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                )}
+              >
+                {phase === 'HITL'
+                  ? 'Awaiting Manager Review'
+                  : phase === 'COMPLETE'
+                  ? 'Active Sprint Synced'
+                  : phase === 'IDLE'
+                  ? 'Ready'
+                  : `Phase: ${phase}`}
               </span>
             </div>
-            <p className="mt-0.5 text-xs text-white/50">
-              {meetingId ? `Meeting: ${meetingId}` : 'Ready for Media -> WorkOS Hinglish Demo'}
-              {threadId ? ` · Thread: ${threadId}` : ''}
+            <p className="mt-0.5 text-xs text-white/45">
+              {meetingId ? `Meeting: ${meetingId}` : 'Sovereign Sprint Orchestrator'}
+              {threadId ? ` · Thread: ${threadId.slice(0, 18)}...` : ''}
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {onToggleSplitView && (
+        <div className="flex items-center gap-2.5">
+          {isManager && (
             <button
               type="button"
-              onClick={onToggleSplitView}
-              className={`rounded-lg border px-3.5 py-2 text-xs font-semibold transition ${
-                splitView
-                  ? 'border-sky-400/50 bg-sky-500/20 text-sky-100'
-                  : 'border-white/15 bg-dark-2 text-white/70 hover:text-white'
-              }`}
+              onClick={onOpenIngestModal}
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md transition hover:bg-blue-500"
             >
-              {splitView ? 'Split Demo View: ON' : 'Split Demo View (Manager + Employee)'}
+              <Play className="size-3.5 fill-current" />
+              <span>Ingest Meeting</span>
             </button>
           )}
-          {onRunSimulation && (
-            <button
-              type="button"
-              disabled={simulating}
-              onClick={onRunSimulation}
-              className="rounded-lg bg-gradient-to-r from-purple-600 to-blue-1 px-4 py-2 text-xs font-bold text-white shadow transition hover:opacity-95 disabled:opacity-50"
-            >
-              {simulating ? 'Sending Media -> WorkOS...' : '▶ Run Hinglish Demo Simulation'}
-            </button>
-          )}
-          {onReset && (
+
+          {onReset && threadId && (
             <button
               type="button"
               onClick={onReset}
-              className="rounded-lg border border-white/15 bg-dark-3 px-3.5 py-2 text-xs font-medium text-white/80 transition hover:bg-white/10"
+              className="flex items-center gap-1.5 rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-xs font-medium text-white/70 transition hover:bg-white/[0.08] hover:text-white"
             >
-              Reset
+              <RotateCcw className="size-3.5" />
+              <span>Reset</span>
             </button>
           )}
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        {steps.map((s) => {
-          const styleMap = {
-            done: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
-            active: 'border-amber-400/50 bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/20',
-            error: 'border-red-500/40 bg-red-500/15 text-red-200',
-            idle: 'border-white/10 bg-dark-2/70 text-white/50',
-          };
-          return (
-            <div key={s.id} className={`rounded-lg border px-3 py-2 ${styleMap[s.status]}`}>
-              <p className="truncate text-xs font-semibold">{s.label}</p>
-              <p className="mt-0.5 truncate text-[10px] opacity-75">{s.sublabel}</p>
+      {/* 4-Step Lifecycle Bar */}
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {steps.map((st, idx) => (
+          <div
+            key={st.id}
+            className={cn(
+              'flex items-center gap-3 rounded-xl border p-2.5 transition-all',
+              st.isActive
+                ? 'border-blue-500/40 bg-blue-500/[0.08]'
+                : st.isComplete
+                ? 'border-emerald-500/30 bg-emerald-500/[0.04]'
+                : 'border-white/[0.06] bg-[#181A1F]/50 opacity-60'
+            )}
+          >
+            <div
+              className={cn(
+                'flex size-6 shrink-0 items-center justify-center rounded-lg text-xs font-bold',
+                st.isComplete
+                  ? 'bg-emerald-500 text-black'
+                  : st.isActive
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white/10 text-white/60'
+              )}
+            >
+              {st.isComplete ? <Check className="size-3.5 stroke-[3]" /> : st.id}
             </div>
-          );
-        })}
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-white">{st.label}</p>
+              <p className="truncate text-[10px] text-white/40">{st.sub}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

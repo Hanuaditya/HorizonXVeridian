@@ -35,14 +35,14 @@ export const sidebarLinks = [
     label: 'WorkOS Hub',
   },
   {
+    imgURL: '/icons/share.svg',
+    route: '/messages',
+    label: 'Messages',
+  },
+  {
     imgURL: '/icons/schedule.svg',
     route: '/admin',
     label: 'Admin & Maps',
-  },
-  {
-    imgURL: '/icons/add-personal.svg',
-    route: '/personal-room',
-    label: 'Personal Room',
   },
 ];
 

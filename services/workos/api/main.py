@@ -15,7 +15,7 @@ if _WORKOS_ROOT not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import github, hitl, meeting, slack, threads
+from api.routes import github, hitl, meeting, messages, slack, threads
 from connectors.sprint_loop import poll_slack_and_checkins_once
 from core.config import get_settings
 from core.store import assert_embedding_dimension_match
@@ -89,6 +89,7 @@ app.include_router(hitl.router, prefix="/api", tags=["HITL"])
 app.include_router(threads.router, prefix="/api", tags=["SSE & State"])
 app.include_router(slack.router, prefix="/api", tags=["Webhooks"])
 app.include_router(github.router, prefix="/api", tags=["Webhooks"])
+app.include_router(messages.router, prefix="/api", tags=["Messages"])
 
 
 @app.get("/health", tags=["Health"])
