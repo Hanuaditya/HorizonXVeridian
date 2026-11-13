@@ -114,7 +114,7 @@ def check_local_services() -> list[tuple[str, bool, str]]:
     results = []
     for name, base, path in services:
         try:
-            r = httpx.get(f"{base}{path}", timeout=3.0)
+            r = httpx.get(f"{base}{path}", timeout=10.0)
             if r.status_code in (200, 307, 308, 401, 404):  # 200/307 Clerk redirect or active route
                 results.append((name, True, f"Port open, responded HTTP {r.status_code}"))
             else:
