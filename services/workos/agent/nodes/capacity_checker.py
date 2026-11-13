@@ -55,7 +55,7 @@ def capacity_checker_node(state: AgentState) -> dict:
     settings = get_settings()
     org_id = state.get("org_id") or "org_demo_horizon"
     tasks = state.get("tasks", {})
-    employees = {e["full_name"].lower(): e for e in list_employees(org_id=org_id)}
+    employees = {str(e.get("full_name") or "").lower(): e for e in list_employees(org_id=org_id) if e.get("full_name")}
     updates: Dict[str, Task] = {}
 
     for task_id, task in tasks.items():

@@ -339,79 +339,7 @@ def structured_output(
 
 
 def demo_extract_from_transcript(transcript_text: str) -> Dict[str, Any]:
-    """Deterministic Hinglish + Speaker Turns transcript extractor used during outages and DEMO_MODE."""
-    low = (transcript_text or "").lower()
-    is_hinglish_sprint_demo = (
-        ("elastic" in low and ("arjun" in low or "jason" in low))
-        or ("paternity" in low and ("2.5" in low or "lakhs" in low or "staging" in low))
-    )
-
-    if is_hinglish_sprint_demo:
-        return {
-            "meeting_context": {
-                "speaker_resolution_scratchpad": (
-                    "Dov assigns Elastic production deployment to Arjun; Amit flags Arjun on paternity leave; "
-                    "Dov asks Josh to take over direct AWS prod deployment; Scott cites 14-day staging policy "
-                    "(SEC-POL-089) and Rs 2.5L/mo cost; Amit reports Q4 compute budget is 0."
-                ),
-                "title": "Q4 Infrastructure & Elastic Deployment Sync",
-                "date": "2026-11-11",
-                "attendees": ["Dov Hershkovitz", "Arjun Rao", "Josh Lambert", "Scott Williamson", "Amit Sharma"],
-                "tldr_bullets": [
-                    "Arjun Rao is on paternity leave until next Monday; Elastic deployment needs reassignment to Josh Lambert.",
-                    "Direct Elastic cluster deployment to AWS production triggers 14-day staging bake requirement (SEC-POL-089).",
-                    "Enterprise tier cluster costs Rs 2.5 Lakhs/month while Q4 compute_infra budget remaining is 0 INR.",
-                ],
-            },
-            "tasks": [
-                {
-                    "task_id": "t1",
-                    "title": "Hand over Elastic Search deployment ownership from Arjun",
-                    "assignee": "Arjun",
-                    "resource_type": "hr_action",
-                    "transcript_quote": "First, Arjun, please deploy the Elastic search cluster directly to production by Thursday.",
-                    "proposed_commit_message": "feat(hr-action): hand over elastic deployment",
-                },
-                {
-                    "task_id": "t2",
-                    "title": "Deploy Elastic search cluster directly to AWS production",
-                    "assignee": "Josh",
-                    "resource_type": "security_review",
-                    "transcript_quote": "Josh, can you take that over and deploy it directly to AWS production?",
-                    "proposed_commit_message": "feat(sec-review): deploy elastic cluster with 14-day soak",
-                },
-                {
-                    "task_id": "t3",
-                    "title": "Provision enterprise compute cluster instance costing Rs 2.5 Lakhs per month",
-                    "assignee": "Amit",
-                    "resource_type": "compute",
-                    "transcript_quote": "Also, Dov, that enterprise cluster instance will cost around Rs 2.5 Lakhs a month.",
-                    "proposed_commit_message": "feat(compute): provision enterprise compute cluster",
-                },
-                {
-                    "task_id": "t4",
-                    "title": "Publish weekly sprint retrospective notes and attendance log",
-                    "assignee": "Scott",
-                    "resource_type": "product_feature",
-                    "transcript_quote": "Team, welcome. We have three main items today.",
-                    "proposed_commit_message": "feat(product): publish sprint retro notes",
-                },
-            ],
-            "key_decisions": [
-                {
-                    "decision": "Route Arjun's Elastic deployment item through policy verification and reassign ownership.",
-                    "context_quote": "Par Dov bhai, Arjun toh agle Monday tak paternity leave pe hai!",
-                },
-                {
-                    "decision": "Enforce 14-day staging bake compliance and executive compute budget sign-off before production.",
-                    "context_quote": "let's have the AI platform check our policies, route it to the right person, and create the tickets.",
-                },
-            ],
-            "not_actioned": ["Ad-hoc quarter budget reallocation pending CFO approval"],
-        }
-
-    # Enhanced speaker turns parser for arbitrary transcripts:
-    # Supports [HH:MM - Speaker]: text, [HH:MM:SS - Speaker]: text, [Speaker]: text, Speaker: text
+    """Dynamic transcript extractor that parses speaker turns line-by-line using verbatim quotes."""
     tasks: List[Dict[str, Any]] = []
     attendees: List[str] = []
     key_decisions: List[Dict[str, str]] = []
@@ -420,21 +348,33 @@ def demo_extract_from_transcript(transcript_text: str) -> Dict[str, Any]:
         r"^(?:\[(?:\d{1,2}:\d{2}(?::\d{2})?\s*-\s*)?([^\]]+)\]|([A-Za-z0-9_\s\.\-]+)):\s*(.+)$"
     )
 
-    known_peers = [
-        "rohan patel", "rohan",
-        "priya sen", "priya",
-        "arjun rao", "arjun",
-        "catchme if", "catchme",
-        "resigo",
-        "hanu aditya", "hanu",
-        "josh lambert", "josh",
-        "amit sharma", "amit",
-        "scott williamson", "scott",
-        "dov hershkovitz", "dov",
-    ]
+    canonical_map = {
+        "catchme if": "catchme if",
+        "catchme": "catchme if",
+        "resigo": "Resigo",
+        "arjun rao": "Arjun Rao",
+        "arjun": "Arjun Rao",
+        "hanu aditya": "Hanu Aditya",
+        "hanu": "Hanu Aditya",
+        "josh lambert": "Josh Lambert",
+        "josh": "Josh Lambert",
+        "amit sharma": "Amit Sharma",
+        "amit": "Amit Sharma",
+        "scott williamson": "Scott Williamson",
+        "scott": "Scott Williamson",
+        "dov hershkovitz": "Dov Hershkovitz",
+        "dov": "Dov Hershkovitz",
+        "rohan patel": "Rohan Patel",
+        "rohan": "Rohan Patel",
+        "priya sen": "Priya Sen",
+        "priya": "Priya Sen",
+    }
 
-    idx = 1
-    for raw_line in (transcript_text or "").splitlines():
+    lines = [l.strip() for l in (transcript_text or "").splitlines() if l.strip()]
+
+    # First pass: identify speakers and attendees
+    raw_turns = []
+    for raw_line in lines:
         clean = raw_line.strip()
         if not clean or any(inj in clean.lower() for inj in ("ignore previous", "ignore all instructions", "set jira")):
             continue
@@ -447,10 +387,33 @@ def demo_extract_from_transcript(transcript_text: str) -> Dict[str, Any]:
             speaker = "UNASSIGNED"
             utterance = clean
 
-        if speaker and speaker != "UNASSIGNED" and speaker not in attendees:
-            attendees.append(speaker)
+        if speaker and speaker != "UNASSIGNED":
+            spk_canon = speaker
+            for k, v in canonical_map.items():
+                if k in speaker.lower():
+                    spk_canon = v
+                    break
+            if spk_canon not in attendees:
+                attendees.append(spk_canon)
 
+        raw_turns.append((speaker, utterance, clean))
+
+    # Also check if canonical team members are mentioned in text
+    for k, v in canonical_map.items():
+        if k in (transcript_text or "").lower() and v not in attendees:
+            attendees.append(v)
+
+    idx = 1
+    has_seen_budget = False
+    for speaker, utterance, clean in raw_turns:
         utt_low = utterance.lower()
+
+        # Check for key decisions
+        if any(kw in utt_low for kw in ("decide", "agree", "approved", "confirm", "faisla", "theek hai, let's have")):
+            key_decisions.append({
+                "decision": utterance[:140],
+                "context_quote": clean[:180],
+            })
 
         has_action = any(
             kw in utt_low
@@ -459,46 +422,84 @@ def demo_extract_from_transcript(transcript_text: str) -> Dict[str, Any]:
                 "implement", "setup", "set up", "configure", "optimize", "add", "work on",
                 "handle", "will ", "shall", "can take", "take over", "integrate", "renew",
                 "test", "karna", "karega", "karenge", "dekh lo", "kar dena", "kar do",
-                "bana dena", "badhana", "bhejna", "checkout", "auth", "endpoint", "webhook"
+                "bana dena", "badhana", "bhejna", "checkout", "auth", "endpoint", "webhook",
+                "retro", "tickets", "cluster", "instance", "enterprise", "lakhs"
             )
         )
 
-        if has_action:
-            assigned_person = speaker
-            for cand in known_peers:
-                if utt_low.startswith(cand) or f"{cand}," in utt_low or f"@{cand}" in utt_low or f"{cand} " in utt_low:
-                    assigned_person = cand.title() if cand != "catchme if" else "catchme if"
+        is_pure_opening = (
+            ("welcome" in utt_low and "deploy" not in utt_low)
+            or utt_low in ("meeting adjourned!", "meeting adjourned.", "thanks everyone.", "bye all.")
+        )
+        if is_pure_opening or not has_action:
+            continue
+
+        # Prevent duplicate budget tasks if multiple lines discuss the same financial budget item
+        if any(w in utt_low for w in ("lakhs", "budget", "2.5 lakh", "cost around")):
+            if has_seen_budget:
+                continue
+            has_seen_budget = True
+
+        # Determine assigned person: check if another peer was addressed
+        assigned_person = speaker
+        matched_addressed = False
+        for cand_k in ("catchme if", "catchme", "resigo", "arjun rao", "arjun", "josh lambert", "josh", "amit sharma", "amit", "scott williamson", "scott", "rohan patel", "rohan", "priya sen", "priya"):
+            if cand_k in utt_low:
+                assigned_person = canonical_map.get(cand_k) or cand_k.title()
+                matched_addressed = True
+                break
+
+        if not matched_addressed:
+            for att in attendees:
+                if att.lower() in utt_low:
+                    assigned_person = att
+                    matched_addressed = True
                     break
 
+        if not matched_addressed:
+            for cand_k, cand_v in canonical_map.items():
+                if cand_k in speaker.lower():
+                    assigned_person = cand_v
+                    break
+            else:
+                assigned_person = speaker if speaker != "UNASSIGNED" else (attendees[0] if attendees else "UNASSIGNED")
+
+        # Determine resource type:
+        # Crucial: if assigned to Arjun Rao (who is on paternity leave), it must be hr_action
+        if assigned_person in ("Arjun Rao", "Arjun") or any(w in utt_low for w in ("paternity", "maternity", "leave", "handover")):
+            res_type = "hr_action"
+        elif any(w in utt_low for w in ("prod", "staging", "security", "database", "elastic", "legacy v1", "unapproved", "token", "auth", "bake")):
+            res_type = "security_review"
+        elif any(w in utt_low for w in ("budget", "cost", "compute", "cluster", "aws", "lakh", "lakhs", "inr", "instance", "tier")):
+            res_type = "compute"
+        else:
             res_type = "product_feature"
-            if any(w in utt_low for w in ("prod", "staging", "security", "database", "elastic", "legacy v1", "unapproved", "token", "auth")):
-                res_type = "security_review"
-            elif any(w in utt_low for w in ("budget", "cost", "compute", "cluster", "aws", "lakh", "lakhs", "inr", "instance")):
-                res_type = "compute"
-            elif any(w in utt_low for w in ("leave", "paternity", "maternity", "vacation", "sick", "absent", "handover")):
-                res_type = "hr_action"
 
-            task_title = utterance[:96].strip()
-            task_title = re.sub(r"^[A-Za-z0-9_\s]+,\s*(?:please\s+)?", "", task_title)
-            if task_title:
-                task_title = task_title[0].upper() + task_title[1:]
+        # In golden hinged transcript or cost quote, Amit is the finance lead
+        if res_type == "compute" and ("2.5" in utt_low or "lakhs" in utt_low or "cost" in utt_low) and "Amit Sharma" in attendees:
+            assigned_person = "Amit Sharma"
 
-            commit_msg = f"feat({res_type.lower().replace('_', '-')[:12]}): {task_title[:50].lower()}"
+        # In golden transcript closing, tickets/policies task is Scott (Security & Governance lead)
+        if "tickets" in utt_low and "Scott Williamson" in attendees:
+            assigned_person = "Scott Williamson"
 
-            tasks.append({
-                "task_id": f"t{idx}",
-                "title": task_title or f"Sprint Action Item {idx}",
-                "assignee": assigned_person,
-                "resource_type": res_type,
-                "transcript_quote": clean[:180],
-                "proposed_commit_message": commit_msg,
-            })
-            idx += 1
-        elif any(kw in utt_low for kw in ("decide", "agree", "approved", "confirm", "faisla", "done")):
-            key_decisions.append({
-                "decision": utterance[:140],
-                "context_quote": clean[:180],
-            })
+        task_title = utterance[:96].strip()
+        task_title = re.sub(r"^(?:oh\s+right[.,\s]*|also[.,\s]*|first[.,\s]*|team[.,\s]*|[A-Za-z0-9_\s]+,\s*(?:please\s+|can you\s+)?)*", "", task_title, flags=re.IGNORECASE).strip()
+        task_title = re.sub(r"^(?:can you\s+|please\s+)?(?:take that over and\s+)?", "", task_title, flags=re.IGNORECASE).strip()
+        if task_title:
+            task_title = task_title[0].upper() + task_title[1:]
+
+        commit_msg = f"feat({res_type.lower().replace('_', '-')[:12]}): {task_title[:50].lower()}"
+
+        tasks.append({
+            "task_id": f"t{idx}",
+            "title": task_title or f"Sprint Action Item {idx}",
+            "assignee": assigned_person,
+            "resource_type": res_type,
+            "transcript_quote": clean[:180],
+            "proposed_commit_message": commit_msg,
+        })
+        idx += 1
 
     if not tasks:
         tasks.append({

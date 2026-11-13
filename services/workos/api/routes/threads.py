@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -193,7 +193,7 @@ async def trigger_checkin_global(
     """Manager-only trigger to send 1-on-1 status check-ins to all assigned employees."""
     thread_id = (body or {}).get("thread_id")
     if not thread_id:
-        recent = list_thread_snapshots(auth.org_id, limit=5)
+        recent = list_thread_snapshots(auth.org_id)
         thread_id = recent[0]["thread_id"] if recent else "live-sprint-sync"
     return await trigger_checkin_for_thread(org_id=auth.org_id, thread_id=thread_id)
 

@@ -597,7 +597,6 @@ def find_best_domain_replacement(
         or "leadership" in str(e.get("department") or "").lower()
         or "vp" in str(e.get("job_title") or "").lower()
         or "director" in str(e.get("job_title") or "").lower()
-        or str(e.get("full_name") or "").lower() in {"aarav sharma", "scott williamson"}
     )
     candidates = [e for e in employees if e.get("status") == "ACTIVE" and not is_leadership(e)]
     if not candidates:

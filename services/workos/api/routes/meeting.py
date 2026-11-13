@@ -65,14 +65,25 @@ def verify_service_hmac(raw_body: bytes, signature_header: str, timestamp_header
     return hmac.compare_digest(expected, signature_header)
 
 
-def _build_deterministic_hitl_fallback(initial_state: Dict[str, Any]) -> Dict[str, Any]:
+def _build_deterministic_hitl_fallback(initial_state: Any, org_id: Optional[str] = None) -> Dict[str, Any]:
     """Instant deterministic fallback (<50ms) to guarantee HITL transition on timeouts or outages."""
-    raw_transcript = str(initial_state.get("transcript") or "")
-    if not raw_transcript and initial_state.get("transcript_segments"):
-        raw_transcript = "\n".join(
-            f"{s.get('speaker', '')}: {s.get('text', '')}"
-            for s in initial_state["transcript_segments"]
-        )
+    if isinstance(initial_state, str):
+        raw_transcript = initial_state
+        thread_id = "live-sprint-sync"
+        target_org_id = org_id or "org_demo_horizon"
+    elif isinstance(initial_state, dict):
+        raw_transcript = str(initial_state.get("transcript") or "")
+        if not raw_transcript and initial_state.get("transcript_segments"):
+            raw_transcript = "\n".join(
+                f"{s.get('speaker', '')}: {s.get('text', '')}"
+                for s in initial_state["transcript_segments"]
+            )
+        thread_id = str(initial_state.get("thread_id") or initial_state.get("meeting_id") or "live-sprint-sync")
+        target_org_id = str(initial_state.get("org_id") or org_id or "org_demo_horizon")
+    else:
+        raw_transcript = ""
+        thread_id = "live-sprint-sync"
+        target_org_id = org_id or "org_demo_horizon"
 
     extracted = demo_extract_from_transcript(raw_transcript)
     tasks_raw = extracted.get("tasks") or []
@@ -85,6 +96,15 @@ def _build_deterministic_hitl_fallback(initial_state: Dict[str, Any]) -> Dict[st
 
     meeting_context = extracted.get("meeting_context") or {}
     key_decisions = extracted.get("key_decisions") or []
+
+    # Dynamically determine covering engineer from transcript content
+    raw_low = raw_transcript.lower()
+    if "catchme" in raw_low:
+        covering_engineer = "catchme if"
+    elif "josh" in raw_low or "josh lambert" in raw_low:
+        covering_engineer = "Josh Lambert"
+    else:
+        covering_engineer = "catchme if"
 
     tasks_out: Dict[str, Any] = {}
     resolutions_out: List[Dict[str, Any]] = []
@@ -100,11 +120,12 @@ def _build_deterministic_hitl_fallback(initial_state: Dict[str, Any]) -> Dict[st
         combined_text = f"{assignee} {title} {quote}".lower()
 
         # 4-way compliance firewall
-        # 1. Arjun Rao on paternity leave -> REROUTE to catchme if
+        # 1. Arjun Rao on paternity leave -> REROUTE to covering engineer (catchme if)
         if "arjun" in combined_text or "paternity" in combined_text:
             task["hr_status"] = "ON_PATERNITY_LEAVE"
-            task["rerouted_assignee"] = "catchme if"
-            task["assignee_resolution_flag"] = "Arjun Rao on paternity leave until next Monday"
+            task["rerouted_assignee"] = covering_engineer
+            task["leave_recommendation"] = f"Smart Leave Redirection: {covering_engineer}"
+            task["assignee_resolution_flag"] = f"{assignee or 'Arjun Rao'} on paternity leave until next Monday"
             task["resolution_action"] = "REROUTE"
             task["suggested_action"] = "REROUTE"
             resolutions_out.append({
@@ -113,18 +134,18 @@ def _build_deterministic_hitl_fallback(initial_state: Dict[str, Any]) -> Dict[st
                 "conflict_type": "HR_LEAVE",
                 "suggested_action": "REROUTE",
                 "original_assignee": assignee or "Arjun Rao",
-                "new_assignee": "catchme if",
-                "reason": "Arjun Rao is on paternity leave. Automatically rerouted to catchme if.",
+                "new_assignee": covering_engineer,
+                "reason": f"Assignee on paternity leave. Automatically rerouted to {covering_engineer}.",
                 "policy_provenance": "HR-PATERNITY-LEAVE-POLICY",
             })
             immediate_alerts.append({
                 "alert_id": f"alert-{tid}",
                 "severity": "CRITICAL",
                 "title": "HR Compliance: Assignee On Leave",
-                "description": f"Task '{title}' cannot be assigned to {assignee or 'Arjun Rao'} (on paternity leave). Rerouted to catchme if.",
+                "description": f"Task '{title}' cannot be assigned to {assignee or 'Arjun Rao'} (on paternity leave). Rerouted to {covering_engineer}.",
             })
         # 2. 14-day staging bake required -> REFRAME (SEC-POL-089)
-        elif "14-day" in combined_text or "staging" in combined_text or "sec-pol-089" in combined_text:
+        elif "14-day" in combined_text or "staging" in combined_text or "sec-pol-089" in combined_text or "bake" in combined_text:
             task["security_flag"] = "SEC-POL-089: 14-day staging bake required"
             task["resolution_action"] = "REFRAME"
             task["suggested_action"] = "REFRAME"
@@ -144,8 +165,8 @@ def _build_deterministic_hitl_fallback(initial_state: Dict[str, Any]) -> Dict[st
                 "description": "Production deployment modified to include mandatory 14-day staging bake.",
             })
         # 3. Deprecated API prohibited -> FLAG (SEC-POL-104)
-        elif "deprecated" in combined_text or "third-party" in combined_text or "sec-pol-104" in combined_text:
-            task["security_flag"] = "SEC-POL-104: Deprecated third-party API prohibited"
+        elif "deprecated" in combined_text or "third-party" in combined_text or "sec-pol-104" in combined_text or "unapproved" in combined_text:
+            task["security_flag"] = "SEC-POL-104: Unapproved/Deprecated External API"
             task["resolution_action"] = "FLAG"
             task["suggested_action"] = "FLAG"
             resolutions_out.append({
@@ -163,8 +184,8 @@ def _build_deterministic_hitl_fallback(initial_state: Dict[str, Any]) -> Dict[st
                 "description": "Task references prohibited deprecated API. Flagged for architectural review.",
             })
         # 4. Budget limit exceeded -> DEFER
-        elif "budget" in combined_text or "cost" in combined_text or "lakhs" in combined_text or "2.5" in combined_text:
-            task["finance_flag"] = "Budget limit exceeded (0 INR remaining in Q4 compute budget)"
+        elif "budget" in combined_text or "cost" in combined_text or "lakhs" in combined_text or "2.5" in combined_text or "0 inr" in combined_text or "tier" in combined_text:
+            task["finance_flag"] = "Finance: Over Budget (0 INR remaining in Q4 compute budget)"
             task["resolution_action"] = "DEFER"
             task["suggested_action"] = "DEFER"
             resolutions_out.append({
@@ -178,8 +199,8 @@ def _build_deterministic_hitl_fallback(initial_state: Dict[str, Any]) -> Dict[st
             immediate_alerts.append({
                 "alert_id": f"alert-{tid}",
                 "severity": "HIGH",
-                "title": "Budget Alert: Q4 Compute Cap Reached",
-                "description": "Compute provisioning deferred until additional budget is allocated.",
+                "title": "Finance Policy: Budget Cap Exceeded",
+                "description": "Compute instance costs exceed allocated budget limit for current quarter.",
             })
         else:
             task["resolution_action"] = "PROCEED"

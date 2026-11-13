@@ -200,3 +200,58 @@ def test_ingestion_background_graph_timeout_engages_deterministic_hitl_fallback(
     actions = [r.get("suggested_action") for r in resolutions]
     assert "REROUTE" in actions or "REFRAME" in actions
 
+
+def test_dynamic_fallback_4person_standup_zero_stale_personas():
+    """Verify dynamic deterministic fallback extracts only catchme if and Resigo,
+    with zero occurrences of Josh, Amit, Scott, or Dov, and all quotes verbatim from input.
+    """
+    from api.routes.meeting import _build_deterministic_hitl_fallback
+    from core.evon_llm import demo_extract_from_transcript
+
+    transcript_4person = (
+        "[00:00 - Hanu Aditya]: Team, let's review our sprint deliverables today.\n"
+        "[00:15 - Hanu Aditya]: Arjun, please deploy the Elastic search cluster directly to production by Thursday.\n"
+        "[00:30 - catchme if]: Arjun is on paternity leave until next Monday, but I will take over and deploy it with a 14-day staging bake.\n"
+        "[00:45 - Resigo]: I will integrate the OAuth 2.0 PKCE authentication flow for the frontend application.\n"
+        "[01:00 - Hanu Aditya]: Great, let's ensure all compliance policies are met before tickets are provisioned."
+    )
+
+    extracted = demo_extract_from_transcript(transcript_4person)
+    assert extracted is not None
+    assert len(extracted["tasks"]) >= 2
+
+    # Run full 4-way governance fallback
+    hitl_state = _build_deterministic_hitl_fallback(transcript_4person)
+    tasks = hitl_state["tasks"]
+    resolutions = hitl_state["resolutions"]
+
+    # 1. Assert Josh, Amit, Scott, Dov NEVER appear anywhere in tasks, assignees, resolutions, or quotes
+    stale_names = {"josh", "amit", "scott", "dov", "2.5 lakhs"}
+    blob_str = str(hitl_state).lower()
+    for stale in stale_names:
+        assert stale not in blob_str, f"Found stale persona/fixture '{stale}' in output: {blob_str}"
+
+    # 2. Assert quotes come verbatim from input transcript
+    for tid, t in tasks.items():
+        q = t.get("transcript_quote")
+        assert q, f"Task {tid} missing transcript quote"
+        assert q in transcript_4person, f"Quote '{q}' not found verbatim in input transcript"
+
+    # 3. Assert effective assignees are strictly catchme if and Resigo
+    effective_assignees = set()
+    for tid, t in tasks.items():
+        assigned = t.get("rerouted_assignee") or t.get("assignee")
+        effective_assignees.add(assigned)
+
+    assert "catchme if" in effective_assignees
+    assert "Resigo" in effective_assignees
+    assert effective_assignees.issubset({"catchme if", "Resigo", "Hanu Aditya"})
+
+    # 4. Assert 4-way governance rules correctly attached
+    # Arjun Rao on leave -> REROUTE to catchme if
+    t1 = next((t for t in tasks.values() if "arjun" in (t.get("assignee") or "").lower() or t.get("hr_status") == "ON_PATERNITY_LEAVE"), None)
+    assert t1 is not None
+    assert t1.get("rerouted_assignee") == "catchme if"
+    assert t1.get("resolution_action") == "REROUTE" or t1.get("suggested_action") == "REROUTE"
+    assert "Smart Leave Redirection: catchme if" in (t1.get("leave_recommendation") or "")
+

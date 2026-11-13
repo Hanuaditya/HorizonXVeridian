@@ -51,7 +51,8 @@ def _extract_claims(payload: Dict[str, Any]) -> AuthContext:
             detail="Token missing required 'sub' claim.",
         )
 
-    org_obj = payload.get("o") if isinstance(payload.get("o"), dict) else {}
+    raw_org = payload.get("o")
+    org_obj: Dict[str, Any] = raw_org if isinstance(raw_org, dict) else {}
     org_id = payload.get("org_id") or org_obj.get("id")
     if not org_id:
         raise HTTPException(
