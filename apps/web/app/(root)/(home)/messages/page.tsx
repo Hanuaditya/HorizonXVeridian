@@ -49,6 +49,9 @@ interface ThreadItem {
   subtitle?: string;
   role: 'bot' | 'employee' | 'manager' | 'peer';
   hr_status?: string;
+  status?: string;
+  ticket_key?: string | null;
+  progress_pct?: number;
   badge?: string;
   unread_count?: number;
   slack_deep_link?: string;
@@ -1121,18 +1124,25 @@ function MessagesWorkspace() {
                                 'rounded px-1.5 py-0.2 text-[9px] font-bold uppercase',
                                 isOnLeave
                                   ? 'bg-amber-500/15 border border-amber-500/20 text-amber-300'
-                                  : 'bg-emerald-500/20 text-emerald-300'
+                                  : ticket
+                                  ? 'bg-emerald-500/20 text-emerald-300'
+                                  : 'bg-white/[0.06] text-white/40 border border-white/[0.08]'
                               )}
                             >
-                              {isOnLeave ? 'ON LEAVE' : ticket?.status || 'ACTIVE'}
+                              {isOnLeave ? 'ON LEAVE' : ticket?.status || t.status || 'IDLE'}
                             </span>
                           </div>
 
                           <div className="mt-2 flex items-center justify-between text-[11px]">
-                            <span className="font-mono text-sky-300 font-bold">
-                              {ticket?.key || (isOnLeave ? 'SCRUM-01' : 'SCRUM-02')}
+                            <span
+                              className={cn(
+                                'font-bold',
+                                ticket?.key ? 'font-mono text-sky-300' : 'text-white/40 font-normal text-[11px]'
+                              )}
+                            >
+                              {ticket?.key || 'No active ticket'}
                             </span>
-                            <span className="text-white/50">{ticket?.progress_pct ?? (isOnLeave ? 0 : 60)}%</span>
+                            <span className="text-white/50">{ticket ? `${ticket.progress_pct}%` : '0%'}</span>
                           </div>
 
                           <div className="mt-1 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
@@ -1141,7 +1151,7 @@ function MessagesWorkspace() {
                                 'h-full transition-all duration-300',
                                 isOnLeave ? 'bg-amber-400' : 'bg-blue-1'
                               )}
-                              style={{ width: `${ticket?.progress_pct ?? (isOnLeave ? 0 : 60)}%` }}
+                              style={{ width: `${ticket ? ticket.progress_pct : 0}%` }}
                             />
                           </div>
                         </div>

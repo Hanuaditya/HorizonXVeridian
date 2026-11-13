@@ -1307,3 +1307,56 @@ def upsert_security_policies(org_id: str, rows: List[Dict[str, Any]]) -> int:
             r for r in _local_store.security_policies if r["org_id"] != org_id
         ] + rows
         return len(rows)
+
+
+def reset_sprint_state(org_id: str) -> Dict[str, Any]:
+    """Clean slate reset of sprint state, tasks, demo feeds, and snapshots for an org."""
+    cleaned_tables: List[str] = []
+    with _local_store._lock:
+        if hasattr(_local_store, "tasks"):
+            _local_store.tasks = [t for t in _local_store.tasks if t.get("org_id") != org_id]
+        if hasattr(_local_store, "slack_threads"):
+            _local_store.slack_threads = [s for s in _local_store.slack_threads if s.get("org_id") != org_id]
+        if hasattr(_local_store, "slack_feed"):
+            _local_store.slack_feed = [f for f in _local_store.slack_feed if f.get("org_id") != org_id]
+        if hasattr(_local_store, "direct_messages"):
+            _local_store.direct_messages = [d for d in _local_store.direct_messages if d.get("org_id") != org_id]
+        if hasattr(_local_store, "thread_states"):
+            keys_to_del = [k for k, v in _local_store.thread_states.items() if v.get("org_id") == org_id]
+            for k in keys_to_del:
+                _local_store.thread_states.pop(k, None)
+        if hasattr(_local_store, "channel_read_markers"):
+            keys_to_del = [k for k in _local_store.channel_read_markers.keys() if k.startswith(f"{org_id}:")]
+            for k in keys_to_del:
+                _local_store.channel_read_markers.pop(k, None)
+        if hasattr(_local_store, "employees"):
+            for e in _local_store.employees:
+                if e.get("org_id") == org_id:
+                    e["active_task_count"] = 0
+                    e["capacity_cache"] = 0
+
+    if using_live_supabase():
+        sb = _get_supabase()
+        for tbl in ["tasks", "resolutions", "approvals", "processed_meetings", "slack_threads"]:
+            try:
+                sb.table(tbl).delete().eq("org_id", org_id).execute()
+                cleaned_tables.append(tbl)
+            except Exception as exc:
+                logger.debug("Supabase reset delete for %s: %s", tbl, exc)
+        for extra in ["sprint_tasks"]:
+            try:
+                sb.table(extra).delete().eq("org_id", org_id).execute()
+                cleaned_tables.append(extra)
+            except Exception:
+                pass
+        try:
+            sb.table("employees").update({"capacity_cache": 0}).eq("org_id", org_id).execute()
+        except Exception as exc:
+            logger.debug("Supabase employees capacity_cache reset: %s", exc)
+
+    return {
+        "status": "reset",
+        "org_id": org_id,
+        "message": "Sprint state, tasks, and messages cleanly reset to 0%.",
+        "cleaned_tables": cleaned_tables,
+    }

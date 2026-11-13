@@ -54,7 +54,7 @@ DEFAULT_TEAM_MEMBERS = [
         "hr_status": "ACTIVE",
         "department": "Platform Engineering",
         "domain_skills": ["elasticsearch", "aws", "backend", "infra", "kubernetes"],
-        "active_task_count": 1,
+        "active_task_count": 0,
     },
     {
         "full_name": "Priya Sen",
@@ -65,7 +65,7 @@ DEFAULT_TEAM_MEMBERS = [
         "hr_status": "ACTIVE",
         "department": "Product & Frontend Engineering",
         "domain_skills": ["frontend", "auth", "oauth", "ui", "api"],
-        "active_task_count": 2,
+        "active_task_count": 0,
     },
     {
         "full_name": "Arjun Rao",
@@ -76,7 +76,7 @@ DEFAULT_TEAM_MEMBERS = [
         "hr_status": "ON_PATERNITY_LEAVE",
         "department": "Product Management",
         "domain_skills": ["elasticsearch", "aws", "backend"],
-        "active_task_count": 2,
+        "active_task_count": 0,
         "leave_until": "2026-12-15",
     },
 ]
@@ -127,6 +127,13 @@ def ensure_org_seeded(org_id: str, org_name: str, force: bool = False) -> dict:
 
     tables = ("employees", "hr_employees", "finance_budgets", "security_policies")
     before = {tbl: _table_count(sb, tbl, org_id) for tbl in tables}
+
+    # Clean up any leftover dummy SCRUM-01 / SCRUM-02 tasks if present
+    for tbl in ("tasks", "sprint_tasks"):
+        try:
+            sb.table(tbl).delete().eq("org_id", org_id).in_("task_id", ["SCRUM-01", "SCRUM-02", "t_dummy"]).execute()
+        except Exception:
+            pass
 
     # Check whether new sprint orchestrator seed items (SEC-POL-104 + domain_skills) exist
     pol_res = (

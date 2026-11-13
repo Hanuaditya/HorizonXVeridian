@@ -205,9 +205,15 @@ function WorkOSContent() {
     }
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
+    try {
+      await fetch('/api/workos/reset', { method: 'POST' });
+    } catch {
+      // Offline tolerance
+    }
     setThreadId(null);
     setSubmitError(null);
+    await refreshState();
   };
 
   // Metrics Calculation

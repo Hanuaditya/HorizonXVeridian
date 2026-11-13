@@ -164,31 +164,33 @@ async def list_message_threads(
     )
     by_channel = unread_info.get("by_channel", {})
 
-    def _find_emp_ticket(emp: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        name_low = str(emp.get("full_name") or "").lower()
-        email_low = str(emp.get("email") or "").lower()
-        slack_id = str(emp.get("slack_id") or "").lower()
+    is_sprint_approved = bool(
+        latest_snap
+        and (latest_snap.get("manager_approved") is True or latest_snap.get("phase") == "COMPLETE")
+        and dispatched_list
+    )
 
+    def _find_emp_ticket(emp: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not is_sprint_approved:
+            return None
+
+        name_low = str(emp.get("full_name") or "").lower()
         for d in dispatched_list:
             a = str(d.get("assignee") or "").lower()
             if (name_low and name_low in a) or (a and a in name_low):
+                j_key = d.get("jira_key") or d.get("jira_ticket_id")
+                if not j_key:
+                    continue
+                tid = d.get("task_id")
+                live_task = tasks_map.get(tid) if tid else None
+                status_val = (live_task or {}).get("jira_status") or d.get("jira_status") or "To Do"
+                pct_val = (live_task or {}).get("progress_pct") if live_task and "progress_pct" in live_task else d.get("progress_pct")
                 return {
-                    "key": d.get("jira_key") or d.get("task_id"),
-                    "title": d.get("title") or "Sprint Action Item",
-                    "status": d.get("jira_status") or "To Do",
-                    "progress_pct": int(d.get("progress_pct") or 0),
+                    "key": str(j_key),
+                    "title": (live_task or {}).get("reframed_title") or (live_task or {}).get("title") or d.get("title") or "Sprint Action Item",
+                    "status": status_val,
+                    "progress_pct": int(pct_val or 0),
                     "jira_url": d.get("jira_url"),
-                    "task_id": d.get("task_id"),
-                }
-        for tid, t in tasks_map.items():
-            a = str(t.get("rerouted_assignee") or t.get("assignee") or "").lower()
-            if (name_low and name_low in a) or (a and a in name_low):
-                return {
-                    "key": t.get("jira_ticket_id") or tid,
-                    "title": t.get("title") or "Sprint Action Item",
-                    "status": t.get("jira_status") or t.get("status") or "To Do",
-                    "progress_pct": int(t.get("progress_pct") or 0),
-                    "jira_url": t.get("jira_url"),
                     "task_id": tid,
                 }
         return None
@@ -224,12 +226,17 @@ async def list_message_threads(
             emp_key = f"emp:{emp.get('id') or emp['full_name'].lower().replace(' ', '_')}"
             slack_uid = emp.get("slack_id") or emp.get("slack_user_id")
             ticket = _find_emp_ticket(emp)
+            emp_hr = emp.get("hr_status") or emp.get("status") or "ACTIVE"
+            is_on_leave = "leave" in emp_hr.lower()
             threads.append({
                 "channel_key": emp_key,
                 "title": emp["full_name"],
                 "subtitle": emp.get("role") or "Engineer",
                 "role": "employee",
-                "hr_status": emp.get("hr_status") or emp.get("status") or "ACTIVE",
+                "hr_status": emp_hr,
+                "status": "ON_LEAVE" if is_on_leave else (ticket.get("status") if ticket else "IDLE"),
+                "ticket_key": ticket.get("key") if ticket else None,
+                "progress_pct": ticket.get("progress_pct", 0) if ticket else 0,
                 "department": emp.get("department") or "Engineering",
                 "slack_user_id": slack_uid,
                 "slack_deep_link": get_slack_dm_link(slack_uid),
@@ -241,7 +248,7 @@ async def list_message_threads(
                     "name": emp["full_name"],
                     "email": emp.get("email"),
                     "role": emp.get("role"),
-                    "hr_status": emp.get("hr_status") or "ACTIVE",
+                    "hr_status": emp_hr,
                     "domain_skills": emp.get("domain_skills", []),
                 },
             })
@@ -256,6 +263,9 @@ async def list_message_threads(
                 "subtitle": manager_emp.get("role") or "Engineering Manager",
                 "role": "manager",
                 "hr_status": "ACTIVE",
+                "status": "ACTIVE",
+                "ticket_key": None,
+                "progress_pct": 0,
                 "slack_user_id": mgr_slack_uid,
                 "slack_deep_link": get_slack_dm_link(mgr_slack_uid),
                 "unread_count": by_channel.get(mgr_key, 0),
@@ -275,12 +285,17 @@ async def list_message_threads(
             peer_key = f"peer:{peer.get('id') or peer['full_name'].lower().replace(' ', '_')}"
             peer_slack_uid = peer.get("slack_id")
             ticket = _find_emp_ticket(peer)
+            peer_hr = peer.get("hr_status") or peer.get("status") or "ACTIVE"
+            peer_on_leave = "leave" in peer_hr.lower()
             threads.append({
                 "channel_key": peer_key,
                 "title": peer["full_name"],
                 "subtitle": peer.get("role") or "Engineer",
                 "role": "peer",
-                "hr_status": peer.get("hr_status") or peer.get("status") or "ACTIVE",
+                "hr_status": peer_hr,
+                "status": "ON_LEAVE" if peer_on_leave else (ticket.get("status") if ticket else "IDLE"),
+                "ticket_key": ticket.get("key") if ticket else None,
+                "progress_pct": ticket.get("progress_pct", 0) if ticket else 0,
                 "slack_user_id": peer_slack_uid,
                 "slack_deep_link": get_slack_dm_link(peer_slack_uid),
                 "unread_count": by_channel.get(peer_key, 0),
@@ -290,7 +305,7 @@ async def list_message_threads(
                     "name": peer["full_name"],
                     "email": peer.get("email"),
                     "role": peer.get("role"),
-                    "hr_status": peer.get("hr_status") or "ACTIVE",
+                    "hr_status": peer_hr,
                 },
             })
 

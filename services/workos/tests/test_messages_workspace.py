@@ -276,3 +276,45 @@ def test_messages_manager_qa_status_and_policies():
     bot_status_reply = status_res.json()["bot_response"]
     assert "SCRUM-10" in bot_status_reply
     assert "60%" in bot_status_reply
+
+
+def test_sprint_reset_cleans_slate_and_sets_zero_percent():
+    client = TestClient(app)
+    mgr_token = mint_demo_jwt(user_id="user_mgr", org_id="org_demo_horizon", role="org:admin")
+
+    # 1. Seed active snapshot with dispatched tickets
+    save_thread_snapshot(
+        thread_id="thr-reset-test",
+        org_id="org_demo_horizon",
+        snapshot={
+            "meeting_id": "mtg-reset",
+            "phase": "COMPLETE",
+            "manager_approved": True,
+            "tasks": {
+                "t1": {"task_id": "t1", "assignee": "catchme if", "progress_pct": 80, "jira_ticket_id": "SCRUM-99"}
+            },
+            "dispatched_tickets": [
+                {"task_id": "t1", "assignee": "catchme if", "jira_key": "SCRUM-99", "progress_pct": 80}
+            ],
+        },
+    )
+
+    # 2. Call POST /api/reset
+    reset_res = client.post("/api/reset", headers={"Authorization": f"Bearer {mgr_token}"})
+    assert reset_res.status_code == 200
+    assert reset_res.json()["status"] == "reset"
+
+    # 3. Check /api/messages/threads returns clean 0% state
+    threads_res = client.get("/api/messages/threads", headers={"Authorization": f"Bearer {mgr_token}"})
+    assert threads_res.status_code == 200
+    threads_data = threads_res.json()["threads"]
+
+    emp_threads = [t for t in threads_data if t["role"] == "employee"]
+    for t in emp_threads:
+        assert t["active_ticket"] is None
+        assert t["ticket_key"] is None
+        assert t["progress_pct"] == 0
+        if "leave" in (t.get("hr_status") or "").lower():
+            assert t["status"] == "ON_LEAVE"
+        else:
+            assert t["status"] == "IDLE"

@@ -29,6 +29,7 @@ from core.store import (
     list_employees,
     list_thread_snapshots,
     record_approval,
+    reset_sprint_state,
     upsert_employee_mapping,
 )
 from api.routes.messages import _filter_and_normalize_employees
@@ -264,4 +265,12 @@ async def manager_reject_done(
         actor=f"clerk:{auth.user_id}",
         reason=reason,
     )
+
+
+@router.post("/reset")
+async def reset_sprint_endpoint(
+    auth: AuthContext = Depends(require_manager),
+) -> Dict[str, Any]:
+    """Manager-only endpoint to perform a clean slate reset of sprint state, tasks, and demo messages."""
+    return reset_sprint_state(auth.org_id)
 
