@@ -6,6 +6,7 @@ import { useAgentStream } from '@/lib/sse';
 import Link from 'next/link';
 import {
   AlertTriangle,
+  ArrowRight,
   Bot,
   CheckCircle2,
   ChevronRight,
@@ -67,6 +68,130 @@ interface ThreadItem {
     hr_status?: string;
     domain_skills?: string[];
   };
+}
+
+function parseInlineSpans(text: string): React.ReactNode[] {
+  const regex = /(`[^`]+`|\*[^*\n]+\*|<https?:\/\/[^>]+>|https?:\/\/[^\s<]+|\b[A-Z]{2,10}-\d+\b)/g;
+
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+    const key = `${match.index}-${token}`;
+
+    if (token.startsWith('`') && token.endsWith('`')) {
+      parts.push(
+        <code key={key} className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[11px] text-sky-200">
+          {token.slice(1, -1)}
+        </code>
+      );
+    } else if (token.startsWith('*') && token.endsWith('*')) {
+      parts.push(
+        <strong key={key} className="font-semibold text-white">
+          {token.slice(1, -1)}
+        </strong>
+      );
+    } else if (token.startsWith('<http') && token.endsWith('>')) {
+      const inner = token.slice(1, -1);
+      const [url, label] = inner.split('|');
+      parts.push(
+        <a
+          key={key}
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-0.5 text-blue-400 hover:text-blue-300 underline underline-offset-2"
+        >
+          {label || url} ↗
+        </a>
+      );
+    } else if (token.startsWith('http')) {
+      parts.push(
+        <a
+          key={key}
+          href={token}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-0.5 text-blue-400 hover:text-blue-300 underline underline-offset-2"
+        >
+          {token} ↗
+        </a>
+      );
+    } else if (/^[A-Z]{2,10}-\d+$/.test(token)) {
+      parts.push(
+        <span
+          key={key}
+          className="inline-flex items-center gap-1 rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 font-mono text-[10px] font-bold text-sky-300"
+        >
+          Open {token} ↗
+        </span>
+      );
+    } else {
+      parts.push(token);
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
+}
+
+function renderFormattedText(text: string): React.ReactNode {
+  if (!text) return null;
+
+  const lines = text.split('\n');
+
+  return (
+    <div className="space-y-1">
+      {lines.map((line, lineIdx) => {
+        const trimmed = line.trim();
+        const isQuote = trimmed.startsWith('>') || trimmed.startsWith('&gt;');
+        const content = isQuote ? trimmed.replace(/^(&gt;|>)\s*/, '') : line;
+
+        const parsedSpans = parseInlineSpans(content);
+
+        if (isQuote) {
+          return (
+            <div
+              key={lineIdx}
+              className="my-1 border-l-2 border-amber-400/80 bg-amber-500/[0.07] pl-3 py-1 rounded-r text-amber-200/90 italic text-xs leading-relaxed"
+            >
+              {parsedSpans}
+            </div>
+          );
+        }
+
+        if (trimmed.startsWith('• ') || trimmed.startsWith('- ')) {
+          return (
+            <div key={lineIdx} className="flex items-start gap-2 pl-1 leading-relaxed">
+              <span className="text-white/40 select-none leading-relaxed">•</span>
+              <span className="flex-1 leading-relaxed">{parseInlineSpans(trimmed.slice(2))}</span>
+            </div>
+          );
+        }
+
+        if (!trimmed) {
+          return <div key={lineIdx} className="h-1" />;
+        }
+
+        return (
+          <div key={lineIdx} className="leading-relaxed">
+            {parsedSpans}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function MessagesPage() {
@@ -273,8 +398,9 @@ function MessagesWorkspace() {
   const quickActions = useMemo(() => {
     if (isAdmin) {
       return [
-        { label: 'Check-in now', command: 'Check in with team now' },
-        { label: 'Sprint status digest', command: 'Check sprint status digest' },
+        { label: 'Check in now', command: 'Check in with team now' },
+        { label: 'Sprint status', command: 'Give me the sprint status summary' },
+        { label: 'Explain policies', command: 'Explain SEC-POL-089 and SEC-POL-104' },
       ];
     }
     return [
@@ -283,8 +409,12 @@ function MessagesWorkspace() {
         command: '60% done: staging environment provisioned and API integration tests running.',
       },
       {
-        label: 'Completed + PR link',
-        command: 'OAuth dashboard completed — PR https://github.com/example/repo/pull/42',
+        label: 'Report blocker',
+        command: 'Blocked on AWS IAM permissions for staging cluster.',
+      },
+      {
+        label: 'Completed + PR',
+        command: 'Task completed — PR https://github.com/example/repo/pull/42',
       },
     ];
   }, [isAdmin]);
@@ -608,9 +738,32 @@ function MessagesWorkspace() {
               const isCurrentUser =
                 m.sender_id === userId ||
                 (user?.fullName && m.sender === user.fullName);
-              const isAlert = m.kind === 'alert' || m.kind === 'compliance_alert';
-              const isReviewMenu = m.kind === 'review_menu';
-              const isDigest = m.kind === 'progress_digest' || m.kind === 'closure_confirmation';
+              const isBlocker =
+                m.kind === 'blocker_escalation' ||
+                m.text.includes('[URGENT BLOCKER ESCALATION]');
+              const isAlert =
+                !isBlocker &&
+                (m.kind === 'alert' ||
+                  m.kind === 'compliance_alert' ||
+                  m.text.includes('[IMMEDIATE COMPLIANCE ALERT]'));
+              const isReviewMenu =
+                m.kind === 'review_menu' ||
+                m.text.includes('[MANAGER REVIEW MENU]');
+              const isDigest =
+                m.kind === 'progress_digest' ||
+                m.text.includes('[Progress Digest]') ||
+                m.text.includes('[Progress Update]');
+              const isCompleted =
+                m.kind === 'closure' ||
+                m.kind === 'closure_confirmation' ||
+                m.text.includes('[Task Completed');
+              const isAssignment =
+                m.kind === 'assignment' ||
+                m.text.includes('[1-on-1 Task Assignment');
+
+              const blockerAssignee =
+                (m.metadata?.assignee as string) ||
+                (m.text.match(/@([a-zA-Z0-9_\s]+?)\s+is BLOCKED/i)?.[1]?.trim());
 
               return (
                 <div
@@ -630,7 +783,7 @@ function MessagesWorkspace() {
                     </div>
                   )}
 
-                  <div className={cn('flex max-w-[72%] flex-col', isCurrentUser ? 'items-end' : 'items-start')}>
+                  <div className={cn('flex max-w-[76%] flex-col', isCurrentUser ? 'items-end' : 'items-start')}>
                     <div className="mb-1 flex items-center gap-2 text-[11px] text-white/40">
                       <span className="font-semibold text-white/70">{m.sender || 'Sender'}</span>
                       <span>·</span>
@@ -646,47 +799,149 @@ function MessagesWorkspace() {
                       )}
                     </div>
 
-                    {/* Message Bubble */}
-                    {isAlert ? (
+                    {/* Message Bubble & Structured Cards */}
+                    {isBlocker ? (
+                      <div className="rounded-xl border border-rose-500/40 bg-rose-500/[0.1] p-4 text-xs text-rose-200 shadow-md">
+                        <div className="flex items-center justify-between gap-2 font-semibold text-rose-300 mb-2">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="size-4 text-rose-400" />
+                            <span className="uppercase tracking-wider text-[11px] font-bold">Urgent Blocker Escalation</span>
+                          </div>
+                          {m.jira_key && (
+                            <span className="rounded bg-rose-500/20 px-2 py-0.5 font-mono text-[10px] text-rose-300 border border-rose-500/30">
+                              {m.jira_key}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-white/95 leading-relaxed">
+                          {renderFormattedText(m.text)}
+                        </div>
+                        {isAdmin && (
+                          <div className="mt-3 pt-2.5 border-t border-rose-500/20 flex items-center justify-between gap-3">
+                            <span className="text-[11px] text-white/50">Employee needs unblocking</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const targetEmp = dmThreads.find((t) => {
+                                  const tName = t.title.toLowerCase();
+                                  const bName = (blockerAssignee || '').toLowerCase();
+                                  return (
+                                    (bName && (tName.includes(bName) || bName.includes(tName))) ||
+                                    m.text.toLowerCase().includes(tName)
+                                  );
+                                });
+                                if (targetEmp) {
+                                  setActiveChannelKey(targetEmp.channel_key);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-400/50 bg-rose-500/20 px-3 py-1 text-xs font-semibold text-rose-200 hover:bg-rose-500/35 transition"
+                            >
+                              <span>Message Directly</span>
+                              <ArrowRight className="size-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : isAlert ? (
                       <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-3.5 text-xs text-rose-200 shadow-md">
                         <div className="flex items-center gap-2 font-semibold text-rose-300 mb-1.5">
                           <ShieldAlert className="size-4" />
-                          <span>Immediate Compliance Alert</span>
+                          <span className="uppercase tracking-wider text-[11px] font-bold">Immediate Compliance Alert</span>
                         </div>
-                        <div className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-white/90">
-                          {m.text}
+                        <div className="text-white/90 leading-relaxed">
+                          {renderFormattedText(m.text)}
                         </div>
                       </div>
                     ) : isReviewMenu ? (
-                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.08] p-3.5 text-xs text-amber-200 shadow-md">
-                        <div className="flex items-center gap-2 font-semibold text-amber-300 mb-1.5">
-                          <Shield className="size-4" />
-                          <span>Manager Review & Governance Gate</span>
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.08] p-4 text-xs text-amber-200 shadow-md">
+                        <div className="flex items-center justify-between gap-2 font-semibold text-amber-300 mb-2">
+                          <div className="flex items-center gap-2">
+                            <Shield className="size-4" />
+                            <span className="uppercase tracking-wider text-[11px] font-bold">Manager Review & Governance Gate</span>
+                          </div>
+                          <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] text-amber-300 border border-amber-500/30">
+                            Zero Tickets Created
+                          </span>
                         </div>
-                        <div className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-white/90">
-                          {m.text}
+                        <div className="text-white/90 leading-relaxed">
+                          {renderFormattedText(m.text)}
                         </div>
+                        {isAdmin && (
+                          <div className="mt-3 pt-2.5 border-t border-amber-500/20 flex items-center justify-between gap-3">
+                            <span className="text-[11px] text-white/50">One-click Jira ticket dispatch & employee Slack DMs</span>
+                            <button
+                              type="button"
+                              disabled={sending}
+                              onClick={() => handleSendMessage('Approve sprint tickets')}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 transition shadow-sm disabled:opacity-40"
+                            >
+                              <CheckCircle2 className="size-3.5" />
+                              <span>Approve & Create Tickets</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ) : isDigest ? (
                       <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] p-3.5 text-xs text-emerald-200 shadow-md">
-                        <div className="flex items-center gap-2 font-semibold text-emerald-300 mb-1.5">
-                          <CheckCircle2 className="size-4" />
-                          <span>Sprint Progress & Jira Status Digest</span>
+                        <div className="flex items-center justify-between gap-2 font-semibold text-emerald-300 mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="size-4" />
+                            <span className="uppercase tracking-wider text-[11px] font-bold">Sprint Progress Digest</span>
+                          </div>
+                          {m.jira_key && (
+                            <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-[10px] text-emerald-300 border border-emerald-500/30">
+                              {m.jira_key}
+                            </span>
+                          )}
                         </div>
-                        <div className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-white/90">
-                          {m.text}
+                        <div className="text-white/90 leading-relaxed">
+                          {renderFormattedText(m.text)}
+                        </div>
+                      </div>
+                    ) : isCompleted ? (
+                      <div className="rounded-xl border border-teal-500/30 bg-teal-500/[0.08] p-3.5 text-xs text-teal-200 shadow-md">
+                        <div className="flex items-center justify-between gap-2 font-semibold text-teal-300 mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="size-4" />
+                            <span className="uppercase tracking-wider text-[11px] font-bold">Task Completed & Ticket Closed</span>
+                          </div>
+                          {m.jira_key && (
+                            <span className="rounded bg-teal-500/20 px-2 py-0.5 font-mono text-[10px] text-teal-300 border border-teal-500/30">
+                              {m.jira_key}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-white/90 leading-relaxed">
+                          {renderFormattedText(m.text)}
+                        </div>
+                      </div>
+                    ) : isAssignment ? (
+                      <div className="rounded-xl border border-sky-500/30 bg-sky-500/[0.08] p-3.5 text-xs text-sky-200 shadow-md">
+                        <div className="flex items-center justify-between gap-2 font-semibold text-sky-300 mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <Ticket className="size-4" />
+                            <span className="uppercase tracking-wider text-[11px] font-bold">1-on-1 Task Assignment</span>
+                          </div>
+                          {m.jira_key && (
+                            <span className="rounded bg-sky-500/20 px-2 py-0.5 font-mono text-[10px] text-sky-300 border border-sky-500/30">
+                              {m.jira_key}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-white/90 leading-relaxed">
+                          {renderFormattedText(m.text)}
                         </div>
                       </div>
                     ) : (
                       <div
                         className={cn(
-                          'rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm whitespace-pre-wrap',
+                          'rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm',
                           isCurrentUser
                             ? 'bg-blue-1 text-white rounded-tr-sm'
                             : 'bg-dark-2 border border-white/[0.07] text-slate-100 rounded-tl-sm'
                         )}
                       >
-                        {m.text}
+                        {renderFormattedText(m.text)}
                       </div>
                     )}
                   </div>

@@ -498,12 +498,41 @@ def post_employee_checkin_dm(
     task_title: str,
     channel_id: Optional[str] = None,
     thread_ts: Optional[str] = None,
+    checkin_round: int = 1,
+    domain_context: Optional[str] = None,
 ) -> tuple[bool, str, str]:
-    """Send scheduled 1-on-1 check-in question to an assigned employee."""
-    text = (
-        f"Hi {assignee}, status check on `{jira_key}` ({task_title}): "
-        "what is your progress %, what have you completed so far, and are there any blockers?"
-    )
+    """Send scheduled 1-on-1 check-in question tailored to task domain and interval round."""
+    t_low = f"{task_title} {domain_context or ''}".lower()
+    if checkin_round >= 2:
+        text = (
+            f"Hi {assignee}, wrapping up for the day — did you finish {task_title} (`{jira_key}`), "
+            "or is anything blocking you? Please share your latest progress % and any commit hashes or PR links."
+        )
+    else:
+        if any(w in t_low for w in ("elastic", "aws", "deploy", "cluster", "infra", "cloud", "vpc")):
+            text = (
+                f"Hi {assignee}, quick check-in on `{jira_key}` ({task_title}) — "
+                "how much of the cluster provisioning and staging setup is finished so far? "
+                "What % are you at, and are there any blockers?"
+            )
+        elif any(w in t_low for w in ("oauth", "auth", "login", "frontend", "ui", "component", "page")):
+            text = (
+                f"Hi {assignee}, quick check-in on `{jira_key}` ({task_title}) — "
+                "how much of the UI integration and token flow is completed so far? "
+                "What % are you at, and are there any blockers?"
+            )
+        elif any(w in t_low for w in ("api", "endpoint", "backend", "database", "migration", "schema")):
+            text = (
+                f"Hi {assignee}, quick check-in on `{jira_key}` ({task_title}) — "
+                "how much of the API endpoints and schema migration is completed so far? "
+                "What % are you at, and are there any blockers?"
+            )
+        else:
+            text = (
+                f"Hi {assignee}, quick check-in on `{jira_key}` ({task_title}) — "
+                "how much of the core implementation is finished so far? "
+                "What % are you at, and are there any blockers?"
+            )
     return post_slack_message(
         org_id=org_id,
         thread_id=thread_id,
@@ -519,6 +548,39 @@ def post_employee_checkin_dm(
     )
 
 
+def post_manager_blocker_escalation_dm(
+    org_id: str,
+    thread_id: str,
+    assignee: str,
+    jira_key: str,
+    task_id: str,
+    task_title: str,
+    blocker_text: str,
+) -> tuple[bool, str, str]:
+    """Send high-priority Blocker Escalation card to Manager."""
+    text = (
+        f"*[URGENT BLOCKER ESCALATION]* · @{assignee} is BLOCKED on `{jira_key}` ({task_title}):\n"
+        f"> {blocker_text}\n"
+        f"*Action Required:* Unblock {assignee} or reassign."
+    )
+    return post_slack_message(
+        org_id=org_id,
+        thread_id=thread_id,
+        role="manager",
+        recipient="Manager",
+        text=text,
+        channel_kind="manager",
+        task_id=task_id,
+        jira_key=jira_key,
+        kind="blocker_escalation",
+        metadata={
+            "assignee": assignee,
+            "blocker_text": blocker_text,
+            "task_title": task_title,
+        },
+    )
+
+
 def post_manager_progress_digest(
     org_id: str,
     thread_id: str,
@@ -528,10 +590,12 @@ def post_manager_progress_digest(
     progress_pct: int,
     completed_milestones: str,
     blockers: str,
+    task_title: Optional[str] = None,
 ) -> tuple[bool, str, str]:
     """Send executive Progress Digest DM to Manager."""
+    title_suffix = f" ({task_title})" if task_title else ""
     text = (
-        f"*[Progress Digest]* `{jira_key}` (@{assignee}): *{progress_pct}% complete*\n"
+        f"*[Progress Digest]* `{jira_key}`{title_suffix} (@{assignee}): *{progress_pct}% complete*\n"
         f"• *Completed:* {completed_milestones}\n"
         f"• *Blockers:* {blockers or 'None'}"
     )
@@ -545,7 +609,7 @@ def post_manager_progress_digest(
         task_id=task_id,
         jira_key=jira_key,
         kind="progress_digest",
-        metadata={"progress_pct": progress_pct, "blockers": blockers},
+        metadata={"progress_pct": progress_pct, "blockers": blockers, "task_title": task_title or ""},
     )
 
 

@@ -325,22 +325,49 @@ async def get_channel_messages(
         email_low = (auth.email or "").lower()
 
         for m in feed:
+            kind = m.get("kind")
+            role = m.get("role")
+            rcp = str(m.get("recipient") or "")
+            snd = str(m.get("sender") or "")
+
             if is_manager:
-                # Manager sees governance alerts, review menus, progress digests, and bot messages
+                # Manager sees governance alerts, review menus, progress digests, blocker escalations, and bot command responses
+                # Exclude individual employee 1-on-1 checkin prompts and assignments
+                if kind in {"checkin", "assignment"} and rcp not in {"Manager", "All"}:
+                    continue
+                if kind == "employee_reply":
+                    # Employee replies are summarized into progress digests or blocker escalations for the manager
+                    continue
+
                 if (
-                    m.get("role") in {"manager", "bot"}
-                    or m.get("recipient") in {"Manager", "All"}
-                    or m.get("kind") in {"alert", "review_menu", "progress_digest", "closure_confirmation", "rework_request"}
+                    role == "manager"
+                    or kind in {
+                        "alert",
+                        "compliance_alert",
+                        "review_menu",
+                        "progress_digest",
+                        "blocker_escalation",
+                        "closure",
+                        "closure_confirmation",
+                        "completion_review",
+                        "rework_request",
+                        "manager_command",
+                        "bot_command_response",
+                    }
+                    or (role == "bot" and rcp in {"Manager", "All", current_name})
+                    or rcp in {"Manager", "All"}
                 ):
                     messages.append(m)
             else:
                 # Employee sees ONLY their 1-on-1 check-ins, assignments, and replies
-                rcp = str(m.get("recipient") or "").lower()
-                snd = str(m.get("sender") or "").lower()
+                if kind in {"review_menu", "compliance_alert", "blocker_escalation"}:
+                    continue
+                rcp_low = rcp.lower()
+                snd_low = snd.lower()
                 if (
-                    (name_low and (name_low in rcp or name_low in snd))
-                    or (email_low and email_low in rcp)
-                    or m.get("role") == "employee"
+                    (name_low and (name_low in rcp_low or name_low in snd_low))
+                    or (email_low and email_low in rcp_low)
+                    or (rcp_low == "all")
                 ):
                     messages.append(m)
 
@@ -434,9 +461,9 @@ async def send_channel_message(
             )
 
             bot_reply = ""
-            if any(k in cmd_low for k in ("check in", "check-in", "checkin", "check", "ping", "status", "scheduled")):
+            if any(k in cmd_low for k in ("check in", "check-in", "checkin", "ping", "trigger check")):
                 checkin_res = await trigger_checkin_for_thread(auth.org_id, target_thread_id)
-                cnt = checkin_res.get("dispatched_checkins", 0)
+                cnt = len(checkin_res.get("checkins_sent", []))
                 bot_reply = f"Initiated 1-on-1 sprint interval check-ins ({cnt} employee DMs sent via Slack)."
             elif any(k in cmd_low for k in ("approve", "approve all", "proceed", "lgtm", "create tickets")):
                 snap = get_thread_snapshot(target_thread_id)
@@ -448,11 +475,71 @@ async def send_channel_message(
                     bot_reply = "Approved all sprint governance gates. Provisioned Jira tickets and dispatched employee Slack DMs."
                 else:
                     bot_reply = "Sprint tickets have already been approved and dispatched to Jira."
+            elif any(k in cmd_low for k in ("status", "progress", "how much has", "sprint status", "summary", "how is")):
+                # Live sprint status query
+                snap = latest_snap or get_thread_snapshot(target_thread_id) or {}
+                tasks = snap.get("tasks") or {}
+                target_person = None
+                for emp in employees:
+                    if emp["full_name"].lower() in cmd_low or (emp.get("id") and emp["id"].lower() in cmd_low):
+                        target_person = emp
+                        break
+
+                if target_person:
+                    p_name = target_person["full_name"]
+                    p_tasks = [
+                        t for t in tasks.values()
+                        if p_name.lower() in str(t.get("rerouted_assignee") or t.get("assignee") or "").lower()
+                    ]
+                    if p_tasks:
+                        lines = [f"*Sprint Status for {p_name}:*"]
+                        for t in p_tasks:
+                            jkey = t.get("jira_ticket_id") or t.get("jira_key") or "TICKET"
+                            ttitle = t.get("reframed_title") or t.get("title") or t.get("task_id")
+                            pct = t.get("progress_pct", 0)
+                            st = t.get("status", "OPEN")
+                            blk = t.get("blockers") or "None"
+                            lines.append(f"• `{jkey}` ({ttitle}): *{pct}% complete* (`{st}`)")
+                            if blk and blk != "None":
+                                lines.append(f"  > Blocker: {blk}")
+                        bot_reply = "\n".join(lines)
+                    else:
+                        bot_reply = f"No active sprint tasks currently assigned to {p_name}."
+                else:
+                    if tasks:
+                        lines = ["*Current Sprint Progress Summary:*"]
+                        for tid, t in tasks.items():
+                            assignee = t.get("rerouted_assignee") or t.get("assignee") or "Unassigned"
+                            jkey = t.get("jira_ticket_id") or t.get("jira_key") or tid
+                            ttitle = t.get("reframed_title") or t.get("title") or tid
+                            pct = t.get("progress_pct", 0)
+                            st = t.get("status", "OPEN")
+                            blk = t.get("blockers") or "None"
+                            lines.append(f"• `{jkey}` (*{assignee}*): *{pct}%* (`{st}`) — {ttitle}")
+                            if blk and blk != "None":
+                                lines.append(f"  > Blocker: {blk}")
+                        bot_reply = "\n".join(lines)
+                    else:
+                        bot_reply = "No active sprint tasks found for the current sprint."
+            elif any(k in cmd_low for k in ("rule", "policy", "policies", "sec-pol", "budget", "leave", "compliance")):
+                bot_reply = (
+                    "*Veridian Sprint Governance & Engineering Policies:*\n\n"
+                    "• *SEC-POL-089 (Staging Bake Requirement):* All production deployments require a minimum 14-day staging bake. "
+                    "Zero-day deployments to production are strictly blocked by the Veridian Governance Firewall.\n\n"
+                    "• *SEC-POL-104 (Third-Party API Deprecation):* Unvetted or deprecated third-party APIs "
+                    "(e.g. deprecated auth libraries or legacy SDKs) are prohibited without Architecture Review Board (ARB) sign-off.\n\n"
+                    "• *Q4 Infrastructure Budget Cap ($5,000):* Any infrastructure, cluster provisioning, or external tooling exceeding "
+                    "$5,000 triggers an immediate financial compliance alert and requires Manager review.\n\n"
+                    "• *HR Leave Auto-Redirection:* Engineers on active leave (e.g. paternity leave) are automatically protected "
+                    "from task assignments; the system auto-reroutes tasks to qualified active peers based on domain skill matching."
+                )
             else:
                 bot_reply = (
-                    f"Command acknowledged: '{text_clean}'. "
-                    "Veridian Governance Firewall active. "
-                    "You can type 'Check in with team now' or 'Approve sprint tickets'."
+                    f"Command acknowledged: '{text_clean}'.\n"
+                    "Veridian Governance Firewall active. You can ask:\n"
+                    "• *Sprint status:* 'How much has catchme if finished?' or 'Give me the sprint status'\n"
+                    "• *Company rules:* 'Explain SEC-POL-089 and SEC-POL-104' or 'What are the budget & leave rules?'\n"
+                    "• *Actions:* 'Check in with team now' or 'Approve sprint tickets'"
                 )
 
             record_slack_feed_message(

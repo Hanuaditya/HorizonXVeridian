@@ -18,6 +18,7 @@ from connectors.slack_ops import (
     has_real_slack_creds,
     post_closure_confirmation_dms,
     post_employee_checkin_dm,
+    post_manager_blocker_escalation_dm,
     post_manager_progress_digest,
     post_manager_review_request_dm,
     post_slack_message,
@@ -243,6 +244,7 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
         if r.get("org_id") == org_id and r.get("thread_id") == thread_id
     }
 
+    slack_feed_msgs = list_slack_feed(org_id=org_id, thread_id=thread_id)
     sent_items: List[Dict[str, Any]] = []
     for tid, task in tasks.items():
         if task.get("status") not in {"DISPATCHED", "OPEN", "BLOCKED"}:
@@ -254,6 +256,12 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
         title = str(task.get("reframed_title") or task.get("title") or tid)
         st = open_threads.get(tid) or {}
 
+        prior_checkins = sum(
+            1 for m in slack_feed_msgs
+            if m.get("task_id") == tid and m.get("kind") == "checkin"
+        )
+        round_num = prior_checkins + 1
+
         ok, ch, ts = post_employee_checkin_dm(
             org_id=org_id,
             thread_id=thread_id,
@@ -263,6 +271,8 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
             task_title=title,
             channel_id=st.get("slack_channel"),
             thread_ts=st.get("slack_thread_ts"),
+            checkin_round=round_num,
+            domain_context=str(task.get("domain") or ""),
         )
         sent_items.append({
             "task_id": tid,
@@ -498,6 +508,15 @@ async def process_employee_reply(
 
         if new_status == "BLOCKED":
             update_task_status_by_id(org_id=org_id, task_id=task_id, status="BLOCKED", jira_key=jira_key or None)
+            post_manager_blocker_escalation_dm(
+                org_id=org_id,
+                thread_id=thread_id,
+                assignee=assignee,
+                jira_key=jira_key or task_id,
+                task_id=task_id,
+                task_title=task_title,
+                blocker_text=analysis.blockers or reply_text,
+            )
 
         post_manager_progress_digest(
             org_id=org_id,
@@ -508,6 +527,7 @@ async def process_employee_reply(
             progress_pct=analysis.progress_pct,
             completed_milestones=analysis.completed_milestones,
             blockers=analysis.blockers,
+            task_title=task_title,
         )
         write_audit_trail(
             org_id=org_id,

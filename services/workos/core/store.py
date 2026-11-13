@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import httpx
 
@@ -267,11 +267,12 @@ class _PostgrestQuery:
         if self._want_count:
             existing = self._headers.get("Prefer", "")
             self._headers["Prefer"] = f"{existing},count=exact".strip(",")
+        query_params: Any = self._params if self._params else None
         resp = httpx.request(
             self._method,
             self._url,
             headers=self._headers,
-            params=httpx.QueryParams(self._params) if self._params else None,
+            params=cast(Any, query_params),
             json=self._json,
             timeout=20.0,
         )
