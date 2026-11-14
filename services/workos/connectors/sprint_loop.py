@@ -27,7 +27,7 @@ from connectors.slack_ops import (
 )
 from core.config import get_settings
 from core.evon_llm import structured_output, wrap_untrusted_data
-from core.identifiers import canonical_employee_key, clean_task_title
+from core.identifiers import canonical_employee_key, clean_task_title, resolve_veridian_thread_id
 from core.store import (
     get_thread_snapshot,
     list_open_slack_threads_all,
@@ -516,7 +516,7 @@ def notify_manager_employee_update(
     # In-App Manager Feed (stored under recipient="manager" so it reaches all manager keys)
     msg = record_slack_feed_message(
         org_id=org_id,
-        thread_id=thread_id,
+        thread_id="veridian-bot:manager",
         role="manager",
         sender="Veridian Bot",
         recipient="manager",
@@ -588,6 +588,20 @@ async def dispatch_stage_2_checkin(
     )
 
     emp_thread_key = canonical_employee_key(assignee)
+    emp_vbot_thread = f"veridian-bot:{emp_thread_key}"
+    record_slack_feed_message(
+        org_id=org_id,
+        thread_id=emp_vbot_thread,  # <-- route to employee's vbot thread
+        role="bot",
+        sender="Veridian Bot",
+        recipient=emp_thread_key,
+        text=stage2_text,
+        kind="checkin",
+        task_id=task_id,
+        jira_key=jira_key,
+        metadata={"checkin_stage": 2, "assignee": assignee},
+    )
+    # Also record to meeting thread so snapshot slack_feed stays consistent
     record_slack_feed_message(
         org_id=org_id,
         thread_id=thread_id,

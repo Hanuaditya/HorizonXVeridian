@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from core.config import get_settings
 from core.evon_llm import resolve_slack_channel
+from core.identifiers import canonical_employee_key
 from core.store import record_slack_feed_message, upsert_slack_thread
 
 logger = logging.getLogger(__name__)
@@ -487,6 +488,23 @@ def post_employee_assignment_dm(
         jira_key=jira_key,
         kind="assignment",
     )
+    emp_slug = canonical_employee_key(assignee)
+    if emp_slug:
+        emp_vbot_thread = f"veridian-bot:{emp_slug}"
+        if thread_id != emp_vbot_thread:
+            record_slack_feed_message(
+                org_id=org_id,
+                thread_id=emp_vbot_thread,
+                role="employee",
+                sender="Veridian Bot",
+                recipient=assignee,
+                text=text,
+                slack_channel=channel,
+                slack_ts=ts,
+                task_id=task_id,
+                jira_key=jira_key,
+                kind="assignment",
+            )
     return ok, channel, ts
 
 
@@ -534,7 +552,7 @@ def post_employee_checkin_dm(
                 "how much of the core implementation is finished so far? "
                 "What % are you at, and are there any blockers?"
             )
-    return post_slack_message(
+    ok, channel, ts = post_slack_message(
         org_id=org_id,
         thread_id=thread_id,
         role="employee",
@@ -547,6 +565,25 @@ def post_employee_checkin_dm(
         jira_key=jira_key,
         kind="checkin",
     )
+    emp_slug = canonical_employee_key(assignee)
+    if emp_slug:
+        emp_vbot_thread = f"veridian-bot:{emp_slug}"
+        if thread_id != emp_vbot_thread:
+            record_slack_feed_message(
+                org_id=org_id,
+                thread_id=emp_vbot_thread,
+                role="bot",
+                sender="Veridian Bot",
+                recipient=assignee,
+                text=text,
+                slack_channel=channel,
+                slack_ts=ts,
+                task_id=task_id,
+                jira_key=jira_key,
+                kind="checkin",
+                metadata={"checkin_stage": checkin_round, "assignee": assignee},
+            )
+    return ok, channel, ts
 
 
 def post_manager_blocker_escalation_dm(

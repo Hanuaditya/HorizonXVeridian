@@ -135,3 +135,21 @@ def get_all_manager_keys(employees: Optional[List] = None) -> List[str]:
                 if uid and uid not in keys:
                     keys.append(str(uid))
     return keys
+
+
+def resolve_veridian_thread_id(role: str = "", name_or_slug: str = "") -> str:
+    """Return deterministic thread_id for the Veridian Bot channel.
+    
+    Manager → "veridian-bot:manager"
+    Employee → "veridian-bot:<canonical_slug>"  e.g. "veridian-bot:catchme_if"
+    """
+    if role == "org:admin" or is_manager_identity(name_or_slug):
+        return "veridian-bot:manager"
+    slug = canonical_employee_key(name_or_slug) if name_or_slug else "unknown"
+    return f"veridian-bot:{slug}"
+
+
+def canonical_vbot_thread_id(name_or_slug: str) -> str:
+    """Shorthand: returns 'veridian-bot:<canonical_slug>' for an employee name."""
+    slug = canonical_employee_key(name_or_slug)
+    return f"veridian-bot:{slug}"

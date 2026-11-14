@@ -32,6 +32,7 @@ from core.identifiers import (
     clean_task_title,
     get_all_manager_keys,
     is_manager_identity,
+    resolve_veridian_thread_id,
 )
 from core.store import (
     get_thread_snapshot,
@@ -427,47 +428,53 @@ async def get_channel_messages(
     slack_deep_link = "https://app.slack.com/client"
 
     if channel_key == "veridian-bot":
-        feed = list_slack_feed_for_org(auth.org_id)
-        if not feed and thread_id:
-            snap = get_thread_snapshot(thread_id)
-            feed = list((snap or {}).get("slack_feed") or [])
+        # Resolve the deterministic thread_id for this user
+        if is_manager:
+            vbot_thread = "veridian-bot:manager"
+        else:
+            emp_key = canonical_employee_key(current_name) if current_name else "unknown"
+            vbot_thread = f"veridian-bot:{emp_key}"
 
-        employees_list = _filter_and_normalize_employees(list_employees(auth.org_id))
-        all_mgr_keys = get_all_manager_keys(employees_list)
-        # Normalize all manager keys for comparison
-        all_mgr_keys_low = {k.lower() for k in all_mgr_keys} | {
-            "manager",
-            "hanu_aditya",
-            "hanuma_aditya",
-            "hanu aditya",
-            "hanuma aditya",
-            current_name.lower(),
-            auth.user_id.lower(),
+        # Primary: thread_id-scoped feed (new deterministic approach)
+        messages = list_slack_feed(org_id=auth.org_id, thread_id=vbot_thread)
+        seen_ids: set = {m.get("id") for m in messages if m.get("id")}
+        seen_sigs: set = {
+            (m.get("kind"), m.get("task_id"), (m.get("text") or "").strip()[:80])
+            for m in messages
         }
 
-        name_low = current_name.lower()
-        email_low = (auth.email or "").lower()
+        # Also merge from all org messages (e.g. seeded with meeting thread_id or legacy routes)
+        feed_all = list_slack_feed_for_org(auth.org_id)
+        if not feed_all and thread_id:
+            snap = get_thread_snapshot(thread_id)
+            feed_all = list((snap or {}).get("slack_feed") or [])
 
-        seen_ids: set = set()
-
-        for m in feed:
-            if m.get("id") in seen_ids:
-                continue
-            kind = m.get("kind")
-            role = m.get("role")
-            rcp = str(m.get("recipient") or "")
-            snd = str(m.get("sender") or "")
-
-            if is_manager:
-                # Manager sees governance alerts, review menus, progress digests, blocker escalations, and bot command responses
-                # Exclude individual employee 1-on-1 checkin prompts and assignments
-                if kind in {"checkin", "assignment"} and rcp not in {"Manager", "All"} and rcp.lower() not in all_mgr_keys_low:
+        if is_manager:
+            employees_list = _filter_and_normalize_employees(list_employees(auth.org_id))
+            all_mgr_keys = get_all_manager_keys(employees_list)
+            all_mgr_keys_low = {k.lower() for k in all_mgr_keys} | {
+                "manager",
+                "hanu_aditya",
+                "hanuma_aditya",
+                "hanu aditya",
+                "hanuma aditya",
+                current_name.lower(),
+                auth.user_id.lower(),
+            }
+            for m in feed_all:
+                if m.get("id") in seen_ids:
+                    continue
+                sig = (m.get("kind"), m.get("task_id"), (m.get("text") or "").strip()[:80])
+                if sig in seen_sigs:
+                    continue
+                kind = m.get("kind")
+                rcp = str(m.get("recipient") or "")
+                rcp_low = rcp.lower()
+                role = m.get("role")
+                if kind in {"checkin", "assignment"} and rcp not in {"Manager", "All"} and rcp_low not in all_mgr_keys_low:
                     continue
                 if kind == "employee_reply":
-                    # Employee replies are summarized into progress digests or blocker escalations for the manager
                     continue
-
-                rcp_low = rcp.lower()
                 if (
                     role == "manager"
                     or kind in {
@@ -490,8 +497,18 @@ async def get_channel_messages(
                 ):
                     messages.append(m)
                     seen_ids.add(m.get("id"))
-            else:
-                # Employee sees ONLY their 1-on-1 check-ins, assignments, and direct bot replies
+                    seen_sigs.add(sig)
+        else:
+            name_low = current_name.lower()
+            email_low = (auth.email or "").lower()
+            emp_key = canonical_employee_key(current_name) if current_name else ""
+            for m in feed_all:
+                if m.get("id") in seen_ids:
+                    continue
+                sig = (m.get("kind"), m.get("task_id"), (m.get("text") or "").strip()[:80])
+                if sig in seen_sigs:
+                    continue
+                kind = m.get("kind")
                 if kind in {
                     "review_menu",
                     "compliance_alert",
@@ -501,12 +518,12 @@ async def get_channel_messages(
                     "bot_command_response",
                 }:
                     continue
-                if kind in {"closure", "closure_confirmation"} and rcp == "Manager":
+                if kind in {"closure", "closure_confirmation"} and m.get("recipient") == "Manager":
                     continue
+                rcp = str(m.get("recipient") or "")
+                snd = str(m.get("sender") or "")
                 rcp_low = rcp.lower()
                 snd_low = snd.lower()
-                # Match by canonical key
-                emp_key = canonical_employee_key(current_name) if current_name else ""
                 rcp_key = canonical_employee_key(rcp) if rcp else ""
                 snd_key = canonical_employee_key(snd) if snd else ""
                 if (
@@ -517,6 +534,9 @@ async def get_channel_messages(
                 ):
                     messages.append(m)
                     seen_ids.add(m.get("id"))
+                    seen_sigs.add(sig)
+
+        messages.sort(key=lambda x: str(x.get("created_at") or ""))
 
         slack_deep_link = get_slack_dm_link(current_emp.get("slack_id") if current_emp else None)
 
@@ -633,11 +653,12 @@ async def send_channel_message(
 
             # 3. Persist ALL 3 records immediately
             emp_thread_key = canonical_employee_key(current_name)
+            emp_vbot_thread = f"veridian-bot:{emp_thread_key}"
 
             # Record 1: Outgoing employee message in Employee's veridian-bot thread
             record_slack_feed_message(
                 org_id=auth.org_id,
-                thread_id=target_thread_id,
+                thread_id=emp_vbot_thread,
                 role="employee",
                 sender=current_name,
                 recipient="Veridian Bot",
@@ -651,7 +672,7 @@ async def send_channel_message(
             # Record 2: Veridian Bot's immediate reply to Employee
             record_slack_feed_message(
                 org_id=auth.org_id,
-                thread_id=target_thread_id,
+                thread_id=emp_vbot_thread,
                 role="bot",
                 sender="Veridian Bot",
                 recipient=emp_thread_key,
@@ -771,6 +792,9 @@ async def send_channel_message(
 
             background_tasks.add_task(_bg_sync)
 
+            # Fetch the full thread for immediate frontend render
+            emp_thread_msgs = list_slack_feed(org_id=auth.org_id, thread_id=emp_vbot_thread)
+
             res_data = {
                 "status": "processed",
                 "channel_key": channel_key,
@@ -778,6 +802,7 @@ async def send_channel_message(
                 "intent": analysis.intent,
                 "progress_pct": new_progress,
                 "bot_reply": bot_emp_reply,
+                "messages": emp_thread_msgs,
             }
             if body.client_msg_id:
                 _PROCESSED_CLIENT_MSGS[body.client_msg_id] = (time.time(), res_data)
@@ -788,7 +813,7 @@ async def send_channel_message(
 
             record_slack_feed_message(
                 org_id=auth.org_id,
-                thread_id=target_thread_id,
+                thread_id="veridian-bot:manager",
                 role="manager",
                 sender=current_name,
                 recipient="Veridian Bot",
@@ -892,7 +917,7 @@ async def send_channel_message(
 
             record_slack_feed_message(
                 org_id=auth.org_id,
-                thread_id=target_thread_id,
+                thread_id="veridian-bot:manager",
                 role="bot",
                 sender="Veridian Bot",
                 recipient=current_name,
@@ -907,10 +932,12 @@ async def send_channel_message(
                 org_id=auth.org_id,
             )
 
+            mgr_msgs = list_slack_feed(org_id=auth.org_id, thread_id="veridian-bot:manager")
             res_data = {
                 "status": "command_executed",
                 "channel_key": channel_key,
                 "bot_response": bot_reply,
+                "messages": mgr_msgs,
             }
             if body.client_msg_id:
                 _PROCESSED_CLIENT_MSGS[body.client_msg_id] = (time.time(), res_data)

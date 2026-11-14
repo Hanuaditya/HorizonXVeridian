@@ -680,6 +680,23 @@ function MessagesWorkspace() {
 
       if (res.ok) {
         pendingMessagesRef.current.delete(clientMsgId);
+        try {
+          const data = await res.json();
+          if (data?.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+            setMessages((prev) => {
+              const idSet = new Set(prev.map((m: any) => m.id));
+              const clientIdSet = new Set(prev.map((m: any) => m.client_msg_id).filter(Boolean));
+              const incoming = data.messages.filter(
+                (m: any) => m.id && !idSet.has(m.id) && (!m.client_msg_id || !clientIdSet.has(m.client_msg_id))
+              );
+              const confirmedClientIds = new Set(data.messages.map((m: any) => m.client_msg_id).filter(Boolean));
+              const filteredPrev = prev.filter((m: any) => !m._optimistic || !confirmedClientIds.has(m.client_msg_id));
+              return [...filteredPrev, ...incoming];
+            });
+          }
+        } catch {
+          // Non-blocking parse error tolerance
+        }
         loadChannelMessages(activeChannelKey, true);
         refreshState();
         loadThreads();
