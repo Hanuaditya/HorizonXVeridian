@@ -21,7 +21,7 @@ from connectors.slack_ops import send_manager_review_menu
 from contracts.meeting_ended import MeetingEndedPayload
 from core.config import get_settings
 from core.evon_llm import demo_extract_from_transcript
-from core.store import list_slack_feed, save_thread_snapshot
+from core.store import list_slack_feed, reset_sprint_state, save_thread_snapshot
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -802,4 +802,18 @@ async def ingest_live_transcript(
         meeting_id=meeting_id,
         org_id=auth.org_id,
     )
+
+
+@router.post("/reset")
+@router.post("/workos/reset")
+async def reset_sprint_endpoint(
+    background_tasks: BackgroundTasks,
+    auth: AuthContext = Depends(require_manager),
+) -> Dict[str, Any]:
+    """Manager-only endpoint to perform a clean slate reset of sprint state, tasks, and demo messages.
+    Also purges all project issues from Jira via JQL in BackgroundTasks.
+    """
+    from connectors.jira_ops import purge_all_project_issues
+    background_tasks.add_task(purge_all_project_issues)
+    return reset_sprint_state(auth.org_id)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -281,9 +281,13 @@ async def manager_reject_done(
 
 
 @router.post("/reset")
+@router.post("/workos/reset")
 async def reset_sprint_endpoint(
+    background_tasks: BackgroundTasks,
     auth: AuthContext = Depends(require_manager),
 ) -> Dict[str, Any]:
     """Manager-only endpoint to perform a clean slate reset of sprint state, tasks, and demo messages."""
+    from connectors.jira_ops import purge_all_project_issues
+    background_tasks.add_task(purge_all_project_issues)
     return reset_sprint_state(auth.org_id)
 

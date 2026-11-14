@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -332,10 +332,11 @@ def delete_jira_issue(ticket_id: str) -> bool:
         return True
     try:
         base = settings.jira_base_url.rstrip("/")
-        url = f"{base}/rest/api/3/issue/{ticket_id}"
+        url = f"{base}/rest/api/3/issue/{ticket_id}?deleteSubtasks=true"
         resp = httpx.delete(
             url,
             auth=(settings.jira_email, settings.jira_api_token),
+            headers={"Accept": "application/json"},
             timeout=10.0,
         )
         resp.raise_for_status()
@@ -343,5 +344,112 @@ def delete_jira_issue(ticket_id: str) -> bool:
     except Exception as exc:
         logger.warning("delete_jira_issue failed for %s: %s", ticket_id, exc)
         return False
+
+
+def purge_all_project_issues(project_key: Optional[str] = None) -> Dict[str, Any]:
+    """Query Jira via JQL (project = SCRUM) and delete all existing issues in the project."""
+    target_project = project_key or resolve_jira_project_key() or "SCRUM"
+    logger.info("purge_all_project_issues: starting purge for Jira project '%s'", target_project)
+
+    settings = get_settings()
+    if not has_real_jira_creds():
+        logger.info("purge_all_project_issues: mock credentials or demo mode; returning empty purge.")
+        return {"purged": 0, "keys": [], "project": target_project, "mode": "demo"}
+
+    base = settings.jira_base_url.rstrip("/")
+    auth = (settings.jira_email, settings.jira_api_token)
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    jql_query = f"project = {target_project}"
+
+    issue_keys: List[str] = []
+    next_page_token: Optional[str] = None
+
+    try:
+        # Jira Cloud REST API v3: /rest/api/3/search/jql
+        while True:
+            body: Dict[str, Any] = {
+                "jql": jql_query,
+                "fields": ["key"],
+                "maxResults": 100,
+            }
+            if next_page_token:
+                body["nextPageToken"] = next_page_token
+
+            resp = httpx.post(
+                f"{base}/rest/api/3/search/jql",
+                json=body,
+                auth=auth,
+                headers=headers,
+                timeout=15.0,
+            )
+
+            # Fallback to legacy GET /rest/api/3/search if search/jql returns 404 or 400
+            if resp.status_code in (404, 400):
+                resp = httpx.get(
+                    f"{base}/rest/api/3/search",
+                    params={"jql": jql_query, "fields": "key", "maxResults": 100},
+                    auth=auth,
+                    headers={"Accept": "application/json"},
+                    timeout=15.0,
+                )
+
+            if resp.status_code != 200:
+                logger.warning(
+                    "purge_all_project_issues: JQL query failed (%d): %s",
+                    resp.status_code,
+                    resp.text,
+                )
+                break
+
+            data = resp.json() or {}
+            issues = data.get("issues") or []
+            for item in issues:
+                k = item.get("key")
+                if k and k not in issue_keys:
+                    issue_keys.append(k)
+
+            next_page_token = data.get("nextPageToken")
+            is_last = data.get("isLast", True)
+            if not issues or is_last or not next_page_token:
+                break
+
+    except Exception as exc:
+        logger.warning("purge_all_project_issues: failed to query issues via JQL: %s", exc)
+
+    deleted_keys: List[str] = []
+    for k in issue_keys:
+        try:
+            del_resp = httpx.delete(
+                f"{base}/rest/api/3/issue/{k}?deleteSubtasks=true",
+                auth=auth,
+                headers={"Accept": "application/json"},
+                timeout=10.0,
+            )
+            if del_resp.status_code in (200, 204):
+                deleted_keys.append(k)
+                logger.info("purge_all_project_issues: successfully deleted Jira issue '%s'", k)
+            else:
+                logger.warning(
+                    "purge_all_project_issues: failed to delete issue '%s' (%d): %s",
+                    k,
+                    del_resp.status_code,
+                    del_resp.text,
+                )
+        except Exception as exc:
+            logger.warning("purge_all_project_issues: error deleting issue '%s': %s", k, exc)
+
+    logger.info(
+        "purge_all_project_issues: purged %d / %d issues in project '%s'",
+        len(deleted_keys),
+        len(issue_keys),
+        target_project,
+    )
+    return {
+        "purged": len(deleted_keys),
+        "keys": deleted_keys,
+        "project": target_project,
+        "mode": "live_jira",
+    }
+
 
 
