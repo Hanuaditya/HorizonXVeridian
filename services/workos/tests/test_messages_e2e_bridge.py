@@ -136,3 +136,54 @@ def test_manager_sprint_status_command():
     # Messages should be in response
     assert "messages" in data
     assert isinstance(data["messages"], list)
+
+
+def test_manager_exact_sprint_status_breakdown():
+    """Manager asks 'Sprint status' → returns exact breakdown for catchme if, Resigo, and Arjun Rao."""
+    client = TestClient(app)
+    _seed_sprint()
+
+    mgr_token = mint_demo_jwt(user_id="user_demo_hanu", org_id=ORG, role="org:admin")
+
+    resp = client.post(
+        "/api/messages/veridian-bot",
+        json={"text": "Sprint status", "thread_id": THREAD_ID},
+        headers={"Authorization": f"Bearer {mgr_token}"},
+    )
+    assert resp.status_code == 200
+    bot_response = resp.json().get("bot_response", "")
+
+    assert "SCRUM-21" in bot_response
+    assert "catchme if" in bot_response
+    assert "Resigo" in bot_response
+    assert "No reply received from Resigo yet" in bot_response
+    assert "Arjun Rao: On Paternity Leave" in bot_response
+
+
+def test_employee_completion_pr_updates_jira_done():
+    """Employee reports 'Completed + PR' → 100% progress, status DONE, and manager notified."""
+    client = TestClient(app)
+    _seed_sprint()
+
+    emp_token = mint_demo_jwt(user_id="user_demo_catchme", org_id=ORG, role="org:member")
+    mgr_token = mint_demo_jwt(user_id="user_demo_hanu", org_id=ORG, role="org:admin")
+
+    resp = client.post(
+        "/api/messages/veridian-bot",
+        json={"text": "Completed + PR: https://github.com/org/repo/pull/42", "thread_id": THREAD_ID},
+        headers={"Authorization": f"Bearer {emp_token}"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("intent") == "COMPLETED"
+    assert data.get("progress_pct") == 100
+    assert "100%" in data.get("bot_reply", "")
+
+    # Manager should receive completion summary
+    mgr_feed = client.get(
+        f"/api/messages/veridian-bot?thread_id={THREAD_ID}",
+        headers={"Authorization": f"Bearer {mgr_token}"},
+    )
+    assert mgr_feed.status_code == 200
+    mgr_texts = [m["text"] for m in mgr_feed.json()["messages"]]
+    assert any("100%" in t and "catchme" in t.lower() for t in mgr_texts)

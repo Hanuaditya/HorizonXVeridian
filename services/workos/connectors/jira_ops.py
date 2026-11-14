@@ -255,3 +255,93 @@ def transition_jira_issue_done(
         "mode": "live_jira",
     }
 
+
+def transition_jira_issue_in_progress(ticket_id: str) -> Dict[str, Any]:
+    """Transition Jira issue to In Progress dynamically."""
+    if not ticket_id:
+        return {"transitioned": False, "status": "UNKNOWN"}
+    settings = get_settings()
+    if not has_real_jira_creds():
+        return {"transitioned": True, "status": "In Progress", "mode": "demo_mock"}
+
+    try:
+        base = settings.jira_base_url.rstrip("/")
+        trans_url = f"{base}/rest/api/3/issue/{ticket_id}/transitions"
+        resp = httpx.get(
+            trans_url,
+            auth=(settings.jira_email, settings.jira_api_token),
+            headers={"Accept": "application/json"},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        transitions = resp.json().get("transitions") or []
+        inp_trans = next(
+            (
+                t for t in transitions
+                if "in progress" in str(t.get("name") or "").lower()
+                or "progress" in str(t.get("name") or "").lower()
+                or str((t.get("to") or {}).get("statusCategory", {}).get("key") or "").lower() in {"indeterminate", "in_progress"}
+            ),
+            None,
+        )
+        if inp_trans and inp_trans.get("id"):
+            post_resp = httpx.post(
+                trans_url,
+                json={"transition": {"id": str(inp_trans["id"])}},
+                auth=(settings.jira_email, settings.jira_api_token),
+                headers={"Accept": "application/json", "Content-Type": "application/json"},
+                timeout=10.0,
+            )
+            post_resp.raise_for_status()
+            return {"transitioned": True, "status": "In Progress", "mode": "live_jira"}
+    except Exception as exc:
+        logger.warning("transition_jira_issue_in_progress failed for %s: %s", ticket_id, exc)
+    return {"transitioned": False, "status": "In Progress"}
+
+
+def update_jira_issue_summary(ticket_id: str, new_summary: str) -> bool:
+    """Update summary title of a Jira ticket (e.g. '[60%] Deploy Elasticsearch...')."""
+    if not ticket_id or not new_summary:
+        return False
+    settings = get_settings()
+    if not has_real_jira_creds():
+        return True
+    try:
+        base = settings.jira_base_url.rstrip("/")
+        url = f"{base}/rest/api/3/issue/{ticket_id}"
+        resp = httpx.put(
+            url,
+            json={"fields": {"summary": new_summary[:255]}},
+            auth=(settings.jira_email, settings.jira_api_token),
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return True
+    except Exception as exc:
+        logger.warning("update_jira_issue_summary failed for %s: %s", ticket_id, exc)
+        return False
+
+
+def delete_jira_issue(ticket_id: str) -> bool:
+    """Delete a Jira issue or mark deleted."""
+    if not ticket_id:
+        return False
+    settings = get_settings()
+    if not has_real_jira_creds():
+        return True
+    try:
+        base = settings.jira_base_url.rstrip("/")
+        url = f"{base}/rest/api/3/issue/{ticket_id}"
+        resp = httpx.delete(
+            url,
+            auth=(settings.jira_email, settings.jira_api_token),
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return True
+    except Exception as exc:
+        logger.warning("delete_jira_issue failed for %s: %s", ticket_id, exc)
+        return False
+
+

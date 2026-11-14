@@ -15,6 +15,7 @@ const Sidebar = () => {
   useEffect(() => {
     let mounted = true;
     const fetchUnread = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const res = await fetch('/api/workos/messages/unread');
         if (res.ok) {
@@ -29,7 +30,7 @@ const Sidebar = () => {
     };
 
     fetchUnread();
-    const interval = setInterval(fetchUnread, 3500);
+    const interval = setInterval(fetchUnread, 8000);
     return () => {
       mounted = false;
       clearInterval(interval);

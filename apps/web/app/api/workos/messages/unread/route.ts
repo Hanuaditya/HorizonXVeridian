@@ -10,11 +10,13 @@ export async function GET() {
       headers: { Authorization: authorization },
       cache: 'no-store',
     });
+    if (!res.ok) {
+      return NextResponse.json({ unread_total: 0, by_channel: {} }, { status: 200 });
+    }
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Failed to load unread counts';
-    return NextResponse.json({ error: msg }, { status: 500 });
+  } catch {
+    return NextResponse.json({ unread_total: 0, by_channel: {} }, { status: 200 });
   }
 }
 

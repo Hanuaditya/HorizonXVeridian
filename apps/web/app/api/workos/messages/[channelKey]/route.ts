@@ -21,7 +21,8 @@ export async function GET(
     return NextResponse.json(data, { status: res.status });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Failed to load channel messages';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const status = msg.includes('Unauthorized') ? 401 : 500;
+    return NextResponse.json({ error: msg, messages: [] }, { status });
   }
 }
 
@@ -46,7 +47,8 @@ export async function POST(
     return NextResponse.json(data, { status: res.status });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Failed to send message';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const status = msg.includes('Unauthorized') ? 401 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }
 

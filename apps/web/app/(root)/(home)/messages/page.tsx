@@ -451,6 +451,7 @@ function MessagesWorkspace() {
 
   // 1. Load threads
   const loadThreads = useCallback(async () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
     try {
       const res = await fetch('/api/workos/messages/threads');
       if (res.ok) {
@@ -470,12 +471,13 @@ function MessagesWorkspace() {
 
   useEffect(() => {
     loadThreads();
-    const interval = setInterval(loadThreads, 4000);
+    const interval = setInterval(loadThreads, 6000);
     return () => clearInterval(interval);
   }, [loadThreads]);
 
   // 2. Load messages for active channel with optimistic preservation & AbortController guard
   const loadChannelMessages = useCallback(async (chKey: string, silent: boolean = false) => {
+    if (typeof document !== 'undefined' && document.hidden) return;
     if (inFlightRef.current) return;
     inFlightRef.current = true;
 
@@ -488,7 +490,7 @@ function MessagesWorkspace() {
     }
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
     try {
       const qs = activeThreadId ? `?thread_id=${encodeURIComponent(activeThreadId)}` : '';
@@ -557,7 +559,7 @@ function MessagesWorkspace() {
       loadChannelMessages(activeChannelKey, false);
       const interval = setInterval(() => {
         loadChannelMessages(activeChannelKey, true);
-      }, 3000);
+      }, 4000);
       return () => clearInterval(interval);
     }
   }, [activeChannelKey, loadChannelMessages]);
@@ -1255,6 +1257,9 @@ function MessagesWorkspace() {
                     {dmThreads.map((t) => {
                       const isOnLeave = (t.hr_status || '').toLowerCase().includes('leave');
                       const ticket = t.active_ticket;
+                      const isBlocked = ticket?.status === 'BLOCKED';
+                      const isDone = ticket?.status === 'DONE' || ticket?.progress_pct === 100;
+                      const isInProgress = ticket?.status === 'IN_PROGRESS' || (ticket && ticket.progress_pct > 0 && !isDone);
 
                       return (
                         <div
@@ -1268,12 +1273,18 @@ function MessagesWorkspace() {
                                 'rounded px-1.5 py-0.2 text-[9px] font-bold uppercase',
                                 isOnLeave
                                   ? 'bg-amber-500/15 border border-amber-500/20 text-amber-300'
+                                  : isDone
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                  : isBlocked
+                                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                  : isInProgress
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                                   : ticket
-                                  ? 'bg-emerald-500/20 text-emerald-300'
+                                  ? 'bg-sky-500/20 text-sky-300'
                                   : 'bg-white/[0.06] text-white/40 border border-white/[0.08]'
                               )}
                             >
-                              {isOnLeave ? 'ON LEAVE' : ticket?.status || t.status || 'IDLE'}
+                              {isOnLeave ? 'ON LEAVE' : (ticket?.status || t.status || 'IDLE').replace('_', ' ')}
                             </span>
                           </div>
 
@@ -1293,7 +1304,15 @@ function MessagesWorkspace() {
                             <div
                               className={cn(
                                 'h-full transition-all duration-300',
-                                isOnLeave ? 'bg-amber-400' : 'bg-blue-1'
+                                isOnLeave
+                                  ? 'bg-amber-400'
+                                  : isDone
+                                  ? 'bg-emerald-400'
+                                  : isBlocked
+                                  ? 'bg-rose-500'
+                                  : isInProgress
+                                  ? 'bg-amber-400'
+                                  : 'bg-blue-1'
                               )}
                               style={{ width: `${ticket ? ticket.progress_pct : 0}%` }}
                             />
@@ -1318,8 +1337,19 @@ function MessagesWorkspace() {
                         <span className="font-mono font-bold text-sky-300">
                           {myEmployeeTicket.key}
                         </span>
-                        <span className="rounded bg-sky-500/20 px-1.5 py-0.2 text-[9px] font-bold text-sky-200 uppercase">
-                          {myEmployeeTicket.status}
+                        <span
+                          className={cn(
+                            'rounded px-1.5 py-0.2 text-[9px] font-bold uppercase',
+                            myEmployeeTicket.status === 'DONE' || myEmployeeTicket.progress_pct === 100
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : myEmployeeTicket.status === 'BLOCKED'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                              : myEmployeeTicket.status === 'IN_PROGRESS' || myEmployeeTicket.progress_pct > 0
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                              : 'bg-sky-500/20 text-sky-200'
+                          )}
+                        >
+                          {myEmployeeTicket.status.replace('_', ' ')}
                         </span>
                       </div>
                       <h4 className="mt-2 text-xs font-semibold text-white">

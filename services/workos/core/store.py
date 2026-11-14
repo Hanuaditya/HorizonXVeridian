@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,7 @@ from core.embeddings import cosine_similarity, get_embedding
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_EMPLOYEES_CACHE: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
 
 
 def _is_configured_supabase() -> bool:
@@ -47,6 +49,12 @@ class LocalDemoStore:
         self.reset()
 
     def reset(self, seed_default_org: bool = True) -> None:
+        try:
+            from core.thread_store import reset_demo_bot_threads
+            reset_demo_bot_threads()
+        except Exception:
+            pass
+        _EMPLOYEES_CACHE.clear()
         with self._lock:
             self.organizations: Dict[str, Dict[str, Any]] = {}
             self.employees: List[Dict[str, Any]] = []
@@ -457,6 +465,11 @@ def _extract_skills_from_row(row: Dict[str, Any], seed_map: Dict[str, List[str]]
 
 
 def list_employees(org_id: str) -> List[Dict[str, Any]]:
+    now_ts = time.time()
+    cached = _EMPLOYEES_CACHE.get(org_id)
+    if cached and (now_ts - cached[0] < 30.0):
+        return [dict(e) for e in cached[1]]
+
     if using_live_supabase():
         sb = _get_supabase()
         res = (
@@ -483,6 +496,7 @@ def list_employees(org_id: str) -> List[Dict[str, Any]]:
         except (ValueError, TypeError):
             item["active_task_count"] = 0
         hydrated.append(item)
+    _EMPLOYEES_CACHE[org_id] = (now_ts, hydrated)
     return hydrated
 
 
@@ -497,6 +511,7 @@ def upsert_employee_mapping(
     active_task_count: Optional[int] = None,
     status: Optional[str] = None,
 ) -> Dict[str, Any]:
+    _EMPLOYEES_CACHE.pop(org_id, None)
     now_iso = datetime.now(timezone.utc).isoformat()
     skills_tag = f" | skills:{','.join(domain_skills)}" if domain_skills else ""
     if using_live_supabase():
@@ -971,6 +986,7 @@ def upsert_slack_thread(
     turn_count: int = 0,
     status: str = "OPEN",
 ) -> Dict[str, Any]:
+    _EMPLOYEES_CACHE.pop(org_id, None)
     now_iso = datetime.now(timezone.utc).isoformat()
     row = {
         "org_id": org_id,
@@ -1317,6 +1333,12 @@ def upsert_security_policies(org_id: str, rows: List[Dict[str, Any]]) -> int:
 
 def reset_sprint_state(org_id: str) -> Dict[str, Any]:
     """Clean slate reset of sprint state, tasks, demo feeds, and snapshots for an org."""
+    _EMPLOYEES_CACHE.pop(org_id, None)
+    try:
+        from core.thread_store import reset_demo_bot_threads
+        reset_demo_bot_threads()
+    except Exception as exc:
+        logger.debug("reset_demo_bot_threads failed: %s", exc)
     cleaned_tables: List[str] = []
     with _local_store._lock:
         if hasattr(_local_store, "tasks"):

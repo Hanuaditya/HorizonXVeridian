@@ -28,6 +28,12 @@ from connectors.slack_ops import (
 from core.config import get_settings
 from core.evon_llm import structured_output, wrap_untrusted_data
 from core.identifiers import canonical_employee_key, clean_task_title, resolve_veridian_thread_id
+from core.thread_store import (
+    DEMO_BOT_THREADS,
+    append_demo_bot_message,
+    get_demo_bucket,
+    register_checkin_timer,
+)
 from core.store import (
     get_thread_snapshot,
     list_open_slack_threads_all,
@@ -225,6 +231,42 @@ async def resume_graph_a_and_sync(
         existing_snap = get_thread_snapshot(thread_id) or {}
         next_checkin = time.time() + max(10, settings.checkin_interval_seconds)
 
+        # Immediate 1-on-1 Assignment Cards into DEMO_BOT_THREADS for catchme_if and resigo
+        for dt in dispatched:
+            assignee = str(dt.get("assignee") or "")
+            emp_bucket = get_demo_bucket(assignee)
+            if emp_bucket in ("catchme_if", "resigo"):
+                j_key = str(dt.get("jira_key") or dt.get("jira_ticket_id") or "TICKET")
+                j_url = str(dt.get("jira_url") or f"https://horizon-veridian.atlassian.net/browse/{j_key}")
+                raw_t = dt.get("title") or "Sprint Action Item"
+                c_title = clean_task_title(str(raw_t))
+                commit_m = str(dt.get("commit_message") or f"feat(sprint): {c_title}")
+                card_text = (
+                    f"*[1-on-1 Task Assignment — @{assignee}]*\n"
+                    f"Your sprint ticket *{j_key}* ({j_url}) has been approved and created:\n"
+                    f"• *Task:* {c_title}\n"
+                    f"• *Proposed Commit:* `{commit_m}`\n"
+                    f"> \"Sprint task approved by Engineering Manager.\""
+                )
+                append_demo_bot_message(
+                    bucket=emp_bucket,
+                    role="employee",
+                    sender="Veridian Bot",
+                    recipient=assignee,
+                    text=card_text,
+                    kind="assignment",
+                    task_id=dt.get("task_id"),
+                    jira_key=j_key,
+                )
+
+        # Initialize task state on each task in tasks_out
+        for tid, t in tasks_out.items():
+            t["progress_pct"] = t.get("progress_pct") or 0
+            t["status"] = t.get("status") or "TO DO"
+            t["replied"] = False
+            t["checkin_stage"] = 0
+            t["awaiting_employee_reply"] = False
+
         save_thread_snapshot(
             thread_id=thread_id,
             org_id=org_id,
@@ -276,7 +318,8 @@ async def resume_graph_a_and_sync(
         await sse_manager.push_complete(thread_id, org_id=org_id)
 
         try:
-            asyncio.create_task(_auto_checkin_scheduler(org_id, thread_id))
+            chk_t = asyncio.create_task(_auto_checkin_scheduler(org_id, thread_id))
+            register_checkin_timer(chk_t)
         except Exception as sched_exc:
             logger.warning("Failed to spawn _auto_checkin_scheduler: %s", sched_exc)
 
@@ -288,19 +331,13 @@ async def resume_graph_a_and_sync(
 
 
 async def _auto_checkin_scheduler(org_id: str, thread_id: str) -> None:
-    """Schedule automatic demo cadence check-ins: #1 after 20s, #2 after 30s more."""
+    """Schedule automatic demo cadence Stage 1 check-in after 30s."""
     try:
-        await asyncio.sleep(20)
-        logger.info("Auto-checkin scheduler: triggering Check-In #1 for %s in org %s", thread_id, org_id)
-        await trigger_checkin_for_thread(org_id=org_id, thread_id=thread_id)
-
         await asyncio.sleep(30)
-        snap = get_thread_snapshot(thread_id) or {}
-        tasks = snap.get("tasks") or {}
-        has_open = any(t.get("status") != "DONE" for t in tasks.values())
-        if has_open:
-            logger.info("Auto-checkin scheduler: triggering Check-In #2 for %s in org %s", thread_id, org_id)
-            await trigger_checkin_for_thread(org_id=org_id, thread_id=thread_id)
+        logger.info("Auto-checkin scheduler: triggering Stage 1 Check-In after 30s for %s in org %s", thread_id, org_id)
+        await trigger_checkin_for_thread(org_id=org_id, thread_id=thread_id)
+    except asyncio.CancelledError:
+        logger.info("Auto-checkin scheduler cancelled for %s", thread_id)
     except Exception as exc:
         logger.warning("Auto-checkin scheduler task failed for %s: %s", thread_id, exc)
 
@@ -406,6 +443,24 @@ async def trigger_checkin_for_thread(org_id: str, thread_id: str) -> Dict[str, A
         task["checkin_stage"] = 1
         task["awaiting_employee_reply"] = True
         tasks_updated[tid] = task
+
+        emp_bucket = get_demo_bucket(assignee)
+        if emp_bucket in ("catchme_if", "resigo"):
+            stage1_text = (
+                f"Hi {assignee}, quick check-in on {jira_key} ({title}) — "
+                "how much have you finished so far? What % are you at, and are there any blockers?"
+            )
+            append_demo_bot_message(
+                bucket=emp_bucket,
+                role="bot",
+                sender="Veridian Bot",
+                recipient=assignee,
+                text=stage1_text,
+                kind="checkin",
+                task_id=tid,
+                jira_key=str(jira_key),
+                metadata={"checkin_stage": 1, "assignee": assignee},
+            )
 
         sent_items.append({
             "task_id": tid,
@@ -513,6 +568,25 @@ def notify_manager_employee_update(
             f"• *Update:* \"{concise}\""
         )
 
+    append_demo_bot_message(
+        bucket="manager",
+        role="manager",
+        sender="Veridian Bot",
+        recipient="manager",
+        text=mgr_text,
+        kind=summary_kind,
+        task_id=tid,
+        jira_key=jkey,
+        metadata={
+            "type": "employee_summary",
+            "employee": employee_name,
+            "source": source,
+            "progress_pct": pct,
+            "task_title": clean_title,
+            "blockers": blockers,
+        },
+    )
+
     # In-App Manager Feed (stored under recipient="manager" so it reaches all manager keys)
     msg = record_slack_feed_message(
         org_id=org_id,
@@ -586,6 +660,20 @@ async def dispatch_stage_2_checkin(
         f"Hi {assignee}, wrapping up for the day — did you finish {clean_title} ({jira_key}), "
         f"or is anything blocking you? Please share your latest progress % and any commit hashes or PR links."
     )
+
+    emp_bucket = get_demo_bucket(assignee)
+    if emp_bucket in ("catchme_if", "resigo"):
+        append_demo_bot_message(
+            bucket=emp_bucket,
+            role="bot",
+            sender="Veridian Bot",
+            recipient=assignee,
+            text=stage2_text,
+            kind="checkin",
+            task_id=task_id,
+            jira_key=jira_key,
+            metadata={"checkin_stage": 2, "assignee": assignee},
+        )
 
     emp_thread_key = canonical_employee_key(assignee)
     emp_vbot_thread = f"veridian-bot:{emp_thread_key}"

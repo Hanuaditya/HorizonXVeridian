@@ -146,12 +146,12 @@ export function useAgentStream(threadId: string | null) {
 
     connect();
 
-    // Lightweight background sync so live Slack DM replies reflect in the UI automatically
+    // Gentle background sync (10s) only when document is visible so live Slack DM replies reflect in UI
     const syncTimer = setInterval(() => {
-      if (!closed) {
+      if (!closed && typeof document !== 'undefined' && !document.hidden) {
         fetchSnapshot(threadId);
       }
-    }, 3000);
+    }, 10000);
 
     return () => {
       closed = true;

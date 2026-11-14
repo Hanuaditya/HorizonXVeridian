@@ -20,6 +20,7 @@ const MobileNav = () => {
   useEffect(() => {
     let mounted = true;
     const fetchUnread = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const res = await fetch('/api/workos/messages/unread');
         if (res.ok) {
@@ -33,7 +34,7 @@ const MobileNav = () => {
       }
     };
     fetchUnread();
-    const interval = setInterval(fetchUnread, 4000);
+    const interval = setInterval(fetchUnread, 10000);
     return () => {
       mounted = false;
       clearInterval(interval);
