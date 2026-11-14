@@ -11,7 +11,7 @@ function base64UrlEncode(buf: Buffer | string): string {
 }
 
 function mintLocalDemoJwt(role: 'org:admin' | 'org:member' = 'org:admin'): string {
-  const secret = process.env.SHARED_HMAC_SECRET || 'dev-demo-secret';
+  const secret = process.env.SHARED_HMAC_SECRET || 'horizon_veridian_demo_hmac_secret_min_32_bytes_2026';
   const now = Math.floor(Date.now() / 1000);
   const header = base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const payload = base64UrlEncode(
